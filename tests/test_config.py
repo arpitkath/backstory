@@ -11,18 +11,12 @@ class ConfigTestCase(unittest.TestCase):
         self.assertEqual(
             DEFAULT_CONFIG,
             {
-                "version": 1,
                 "storage": {
                     "root": ".backstory",
                     "knowledge_dir": "knowledge",
                     "sessions_dir": "sessions",
                     "pending_file": "latest.md",
                     "redactions_dir": "redactions",
-                    "index_db": "index.sqlite",
-                },
-                "capture": {
-                    "store_git_diff": True,
-                    "store_transcripts": True,
                 },
                 "redaction": {
                     "enabled": True,

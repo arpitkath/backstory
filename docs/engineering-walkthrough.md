@@ -63,7 +63,6 @@ Creates the storage layout and writes a default config.
 ```
 .backstory/
   config.json
-  index.sqlite          (reserved for future use)
   knowledge/
     index.md
     sessions/
@@ -232,7 +231,6 @@ class BackstoryPaths:
     sessions: Path        # .backstory/knowledge/sessions/
     pending: Path         # .backstory/knowledge/sessions/latest.md
     redactions: Path      # .backstory/redactions/
-    index_db: Path        # .backstory/index.sqlite (reserved)
     knowledge_index: Path # .backstory/knowledge/index.md
     sessions_index: Path  # .backstory/knowledge/sessions/index.md
 ```
@@ -518,17 +516,7 @@ the session ID, cross-referencing works in both directions:
 - **Session → Commit**: read the session's `commit_hash` field → `git show`.
 
 This is an O(n) scan of session files. With hundreds of sessions, this
-remains fast. With thousands, a proper index (index.sqlite) would be needed.
-
-### The `index.sqlite` Placeholder
-
-The file `.backstory/index.sqlite` is defined in the storage layout but is
-**not yet implemented**. It is reserved for future use as a SQLite-backed
-full-text search index. The intended schema would support:
-
-- Full-text search over session titles, decisions, risks, and file paths.
-- Fast lookup of sessions by commit hash (avoiding O(n) file scans).
-- Boolean queries combining file path, agent name, date range, and keywords.
+remains fast.
 
 ### How Retrieval Works for Each Command
 
@@ -557,52 +545,6 @@ the session's decisions, risks, and why.
 2. For each file, `commits_for_file(path)` → most recent commit.
 3. Run `detect_potential_contradictions()` for contradiction warnings.
 
-### Future Indexing Design
-
-When `index.sqlite` is implemented, the architecture will look like:
-
-```
-┌──────────────────────────────────────────┐
-│              index.sqlite                │
-│                                          │
-│  sessions(                               │
-│    id TEXT PRIMARY KEY,                  │
-│    commit_hash TEXT,                     │
-│    created_at TEXT,                      │
-│    agent_name TEXT,                      │
-│    task_title TEXT,                      │
-│    why TEXT,                             │
-│  )                                       │
-│                                          │
-│  decisions(                              │
-│    id INTEGER,                           │
-│    session_id TEXT REFERENCES sessions,  │
-│    decision TEXT,                        │
-│  )                                       │
-│                                          │
-│  files(                                  │
-│    id INTEGER,                           │
-│    session_id TEXT REFERENCES sessions,  │
-│    file_path TEXT,                       │
-│  )                                       │
-│                                          │
-│  sessions_fts (FTS5 virtual table)       │
-└──────────────────────────────────────────┘
-```
-
-Benefits:
-- O(1) session lookup by commit hash instead of O(n) file scan.
-- Full-text search across all session text (`backstory search`) — currently
-  implemented as an O(n) scan using `search.py`, which scores results by
-  field relevance (task title +10, decisions +8, description +6, etc.).
-- Boolean queries: `backstory search "auth AND decisions:not"` (future with FTS5).
-- No filesystem dependency for retrieval.
-
-The index would be built incrementally during `attach`: after writing the
-stable session file, backstory would insert a row into `index.sqlite`. A
-`repair` command would rebuild the index from scratch by re-reading all
-session files.
-
 ---
 
 ## Current Limitations
@@ -610,8 +552,6 @@ session files.
 - Retrieval is heuristic and Git-backed — cross-session search is an O(n)
   file scan.
 - Contradiction detection is textual-pattern-based, not semantic.
-- The `index.sqlite` database is defined in the storage layout but not yet
-  populated or queried.
 - Several CLI commands (`show`, `context`, `repair`) are declared but not
   yet wired to handlers.
 - Git notes are best-effort — some Git configurations or hosting platforms

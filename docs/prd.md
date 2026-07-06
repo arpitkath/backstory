@@ -148,7 +148,6 @@ This should:
 * Create `.backstory/config.json`
 * Create `.backstory/knowledge/`
 * Create `.backstory/knowledge/sessions/`
-* Create `.backstory/index.sqlite`
 * Install Git pre-commit hook
 * Install Git post-commit hook
 * Add recommended ignore rules
@@ -616,7 +615,6 @@ Fix subscription renewal handling.
 ```text
 .backstory/
   config.json
-  index.sqlite
   knowledge/
     index.md
     sessions/
@@ -658,17 +656,7 @@ Example note:
 
 ### Fallback: Local Index
 
-If Git notes are disabled, store mapping locally:
-
-```text
-commit_hash -> session_hash
-```
-
-In:
-
-```text
-.backstory/index.sqlite
-```
+If Git notes are disabled, store the mapping locally:
 
 MVP should support both, with Git notes enabled by default.
 

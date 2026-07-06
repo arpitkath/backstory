@@ -9,7 +9,6 @@ KNOWLEDGE_DIR_NAME = "knowledge"
 SESSIONS_DIR_NAME = "sessions"
 PENDING_SESSION_NAME = "latest.md"
 REDACTIONS_DIR_NAME = "redactions"
-INDEX_DB_NAME = "index.sqlite"
 KNOWLEDGE_INDEX_NAME = "index.md"
 SESSIONS_INDEX_NAME = "index.md"
 
@@ -21,7 +20,6 @@ class BackstoryPaths:
     sessions: Path
     pending: Path
     redactions: Path
-    index_db: Path
     knowledge_index: Path
     sessions_index: Path
 
@@ -36,7 +34,6 @@ def build_storage_paths(repo_root: Path) -> BackstoryPaths:
         sessions=sessions_root,
         pending=sessions_root / PENDING_SESSION_NAME,
         redactions=storage_root / REDACTIONS_DIR_NAME,
-        index_db=storage_root / INDEX_DB_NAME,
         knowledge_index=knowledge_root / KNOWLEDGE_INDEX_NAME,
         sessions_index=sessions_root / SESSIONS_INDEX_NAME,
     )

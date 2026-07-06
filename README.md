@@ -264,7 +264,6 @@ persists.
 ```text
 .backstory/
   config.json
-  index.sqlite
   knowledge/
     index.md
     sessions/

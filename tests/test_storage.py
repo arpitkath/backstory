@@ -19,7 +19,6 @@ class StorageTestCase(unittest.TestCase):
                 sessions=repo_root / ".backstory" / "knowledge" / "sessions",
                 pending=repo_root / ".backstory" / "knowledge" / "sessions" / "latest.md",
                 redactions=repo_root / ".backstory" / "redactions",
-                index_db=repo_root / ".backstory" / "index.sqlite",
                 knowledge_index=repo_root / ".backstory" / "knowledge" / "index.md",
                 sessions_index=repo_root / ".backstory" / "knowledge" / "sessions" / "index.md",
             ),
@@ -35,8 +34,6 @@ class StorageTestCase(unittest.TestCase):
             self.assertTrue(paths.knowledge.is_dir())
             self.assertTrue(paths.sessions.is_dir())
             self.assertTrue(paths.redactions.is_dir())
-            self.assertEqual(paths.index_db, repo_root / ".backstory" / "index.sqlite")
-            self.assertFalse(paths.index_db.exists())
 
 
 class GitHelpersTestCase(unittest.TestCase):

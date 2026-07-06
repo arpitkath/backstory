@@ -4,7 +4,6 @@ import json
 from pathlib import Path
 
 from backstory.storage import (
-    INDEX_DB_NAME,
     KNOWLEDGE_DIR_NAME,
     PENDING_SESSION_NAME,
     REDACTIONS_DIR_NAME,
@@ -15,18 +14,12 @@ from backstory.storage import (
 
 
 DEFAULT_CONFIG = {
-    "version": 1,
     "storage": {
         "root": STORAGE_DIR_NAME,
         "knowledge_dir": KNOWLEDGE_DIR_NAME,
         "sessions_dir": SESSIONS_DIR_NAME,
         "pending_file": PENDING_SESSION_NAME,
         "redactions_dir": REDACTIONS_DIR_NAME,
-        "index_db": INDEX_DB_NAME,
-    },
-    "capture": {
-        "store_git_diff": True,
-        "store_transcripts": True,
     },
     "redaction": {
         "enabled": True,

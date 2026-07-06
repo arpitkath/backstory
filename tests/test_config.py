@@ -14,9 +14,9 @@ class ConfigTestCase(unittest.TestCase):
                 "version": 1,
                 "storage": {
                     "root": ".backstory",
-                    "objects_dir": "objects",
-                    "summaries_dir": "summaries",
-                    "pending_dir": "pending",
+                    "knowledge_dir": "knowledge",
+                    "sessions_dir": "sessions",
+                    "pending_file": "latest.md",
                     "redactions_dir": "redactions",
                     "index_db": "index.sqlite",
                 },

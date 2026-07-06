@@ -42,7 +42,7 @@ def initialize_repo(
     paths = ensure_storage_layout(repo_root)
     result["storage_created"] = all(
         p.is_dir()
-        for p in [paths.root, paths.objects, paths.summaries, paths.pending, paths.redactions]
+        for p in [paths.root, paths.knowledge, paths.sessions, paths.redactions]
     )
 
     # --- config ---
@@ -70,7 +70,7 @@ def print_init_summary(repo_root: Path, result: dict) -> None:
     print()
 
     if result["storage_created"]:
-        print("  Storage:  .backstory/ (objects, summaries, pending, redactions)")
+        print("  Storage:  .backstory/ (knowledge, sessions, redactions)")
     else:
         print("  Storage:  error creating directories")
 

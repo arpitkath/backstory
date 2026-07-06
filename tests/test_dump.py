@@ -1,11 +1,13 @@
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 from backstory.dump import (
     capture_session,
     clear_pending_session,
+    discover_transcript_path,
     load_pending_session,
     save_pending_session,
 )
@@ -129,11 +131,15 @@ class DumpTestCase(unittest.TestCase):
 
         path = save_pending_session(self.repo_root, session)
         self.assertTrue(path.exists())
-        self.assertEqual(path.name, "latest.json")
+        self.assertEqual(path.name, "latest.md")
 
         loaded = load_pending_session(self.repo_root)
         self.assertIsNotNone(loaded)
         self.assertEqual(loaded["session_id"], session["session_id"])
+
+        content = path.read_text()
+        self.assertIn("type: Backstory Session", content)
+        self.assertIn("# Task", content)
 
     def test_load_pending_session_returns_none_when_missing(self):
         loaded = load_pending_session(self.repo_root)
@@ -154,6 +160,24 @@ class DumpTestCase(unittest.TestCase):
         session = capture_session(repo_root=self.repo_root, task="No chat")
         self.assertNotIn("conversation", session)
         self.assertNotIn("messages", session)
+
+    def test_discover_transcript_path_prefers_backstory_env_var(self):
+        transcript = self.repo_root / "transcript.json"
+        transcript.write_text('{"messages": []}')
+
+        with patch.dict("os.environ", {"BACKSTORY_TRANSCRIPT": str(transcript)}, clear=False):
+            discovered = discover_transcript_path(self.repo_root)
+
+        self.assertEqual(discovered, transcript)
+
+    def test_discover_transcript_path_returns_repo_local_transcript(self):
+        transcript = self.repo_root / ".backstory" / "transcripts" / "latest.json"
+        transcript.parent.mkdir(parents=True, exist_ok=True)
+        transcript.write_text('{"messages": []}')
+
+        discovered = discover_transcript_path(self.repo_root)
+
+        self.assertEqual(discovered, transcript)
 
 
 if __name__ == "__main__":

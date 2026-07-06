@@ -5,7 +5,9 @@ import sys
 from pathlib import Path
 
 from backstory.attach import attach_pending_to_commit
+from backstory.contradiction import detect_potential_contradictions
 from backstory.dump import capture_session, save_pending_session
+from backstory.dump import discover_transcript_path
 from backstory.init import initialize_repo, print_init_summary
 from backstory.retrieval import (
     commit_for_line,
@@ -157,11 +159,17 @@ def _handle_dump(args: argparse.Namespace) -> int:
     model: str | None = None
     decisions = None
 
-    if args.transcript:
+    transcript_path = args.transcript
+    if transcript_path is None:
+        transcript_path = discover_transcript_path(repo)
+        if transcript_path is not None:
+            print(f"Auto-detected transcript: {transcript_path}", file=sys.stderr)
+
+    if transcript_path:
         # Step 1: Read the raw transcript file
-        raw = import_transcript(args.transcript)
+        raw = import_transcript(transcript_path)
         if raw is None:
-            print(f"Warning: could not read transcript from {args.transcript}", file=sys.stderr)
+            print(f"Warning: could not read transcript from {transcript_path}", file=sys.stderr)
         else:
             # Step 2: Detect agent metadata from the transcript envelope
             agent_name = detect_agent_name(raw) or agent_name
@@ -361,6 +369,13 @@ def _handle_diff(args: argparse.Namespace) -> int:
             print(f"   Author: {commits[0].author}")
         else:
             print("   No previous commits found.")
+        print()
+
+    warnings = detect_potential_contradictions(repo, changed_files)
+    if warnings:
+        print("Potential contradictions:")
+        for warning in warnings:
+            print(f"  - {warning}")
         print()
 
     return 0

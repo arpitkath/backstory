@@ -34,7 +34,7 @@ The goal of this product is to preserve the complete AI development context behi
 
 ## 3. Product Goal
 
-Build a local-first Python CLI tool that automatically captures AI coding sessions, compresses and stores them, summarizes the reasoning, and links the session to Git commits using pre-commit and post-commit hooks.
+Build a local-first Python CLI tool that automatically captures AI coding sessions, stores them as OKF markdown, summarizes the reasoning, and links the session to Git commits using pre-commit and post-commit hooks.
 
 The product should make it easy for a developer to later ask:
 
@@ -88,12 +88,12 @@ The first version should be CLI-only.
 It should support:
 
 * Repository initialization
-* Local session storage
+* Local OKF session storage
 * Git pre-commit hook
 * Git post-commit hook
 * Manual session dump
 * Commit-to-session linking
-* Compressed immutable session storage
+* Immutable OKF session storage
 * Human-readable summary generation
 * Secret redaction before storage
 * Search by commit, file, branch, or text query
@@ -146,8 +146,8 @@ This should:
 
 * Create `.backstory/`
 * Create `.backstory/config.json`
-* Create `.backstory/objects/`
-* Create `.backstory/summaries/`
+* Create `.backstory/knowledge/`
+* Create `.backstory/knowledge/sessions/`
 * Create `.backstory/index.sqlite`
 * Install Git pre-commit hook
 * Install Git post-commit hook
@@ -188,15 +188,15 @@ The tool captures:
 The session is then:
 
 * Sent to the AI agent for summarization (only structured decisions extracted)
-* Normalized into JSON
-* Compressed
-* Stored locally — no raw conversation text is persisted
+* Rendered as OKF markdown
+* Stored locally as markdown
 * Indexed for search
 * Given a content hash
 
-> **Privacy:** Raw transcripts are never stored. The agent reads its own
-> conversation and returns only structured facts: task, decisions, risks,
-> follow-ups, and file paths. Everything else is discarded.
+> **Privacy:** Raw transcripts are not part of the persisted session record.
+> The agent reads its own conversation and returns only structured facts:
+> task, decisions, risks, follow-ups, and file paths. Everything else is
+> discarded before persistence.
 
 ---
 
@@ -271,7 +271,7 @@ Risks:
 - Existing users without next_due_on need backfill.
 
 Raw session:
-.backstory/objects/abc123.json.zst
+.backstory/knowledge/sessions/sha256-abc123.md
 ```
 
 ---
@@ -317,7 +317,7 @@ Options:
 ```bash
 backstory dump --agent claude
 backstory dump --agent codex
-backstory dump --transcript ./session.json
+backstory dump --transcript ./transcript.md
 backstory dump --task "Fix webhook subscription handling"
 backstory dump --no-redact
 backstory dump --attach HEAD
@@ -327,9 +327,9 @@ Expected behavior:
 
 * Capture current Git state
 * Import transcript if provided
-* Generate session object
+* Generate OKF session document
 * Redact secrets
-* Compress and store
+* Store as markdown
 * Add to index
 * Optionally attach to commit
 
@@ -565,73 +565,48 @@ Configurable behavior:
 Each session stores only factual reasoning — never raw conversations.
 
 The session is built from structured decisions extracted by the AI agent
-that made the changes (Claude Code, Codex, etc.). No transcript text is
-persisted.
+that made the changes (Claude Code, Codex, Cursor, etc.). No transcript text
+is persisted in the session record. The durable representation is OKF
+markdown.
 
 Example:
 
-Example:
+```md
+---
+type: Backstory Session
+title: Fix subscription renewal handling
+description: The webhook handler was not updating the next billing date.
+resource: git:8f21c9a
+tags: [backstory, ai-session, claude-code]
+timestamp: 2026-07-05T12:00:00Z
+session_id: sha256:abc123
+agent: claude-code
+model: claude-sonnet
+branch: main
+head_before: a1b2c3
+head_after: 8f21c9a
+files_changed:
+  - app/api/webhooks/razorpay/route.ts
+  - lib/subscription.ts
+---
 
-```json
-{
-  "version": "1.0",
-  "session_id": "sha256:abc123",
-  "created_at": "2026-07-05T12:00:00Z",
-  "repo": {
-    "name": "agenticprep",
-    "root": "/repo/path",
-    "branch": "main",
-    "head_before": "a1b2c3",
-    "head_after": "8f21c9a"
-  },
-  "agent": {
-    "name": "claude-code",
-    "model": "claude-sonnet",
-    "source": "hook"
-  },
-  "task": {
-    "title": "Fix subscription renewal handling",
-    "user_prompt": "Handle Razorpay subscription charged, failed, halted and cancelled events."
-  },
-  "files": {
-    "changed": [],
-    "created": [],
-    "deleted": []
-  },
-  "commands": [
-    {
-      "command": "uv run ruff check",
-      "status": "success"
-    }
-  ],
-  "diff": {
-    "staged": "",
-    "unstaged": "",
-    "summary": ""
-  },
-  "reasoning_summary": {
-    "why": "The webhook handler was not updating the next billing date after successful recurring charges.",
-    "decisions": [
-      "subscription.charged updates next_due_on",
-      "payment.failed marks subscription as pending, not cancelled"
-    ],
-    "alternatives": [],
-    "risks": [
-      "Existing users without next_due_on need backfill"
-    ],
-    "followups": [
-      "Add monitoring for webhook failures"
-    ]
-  },
-  "commit": {
-    "hash": "8f21c9a",
-    "message": "Fix subscription renewal handling"
-  },
-  "redaction": {
-    "status": "redacted",
-    "matches": []
-  }
-}
+# Task
+
+Fix subscription renewal handling.
+
+# Decisions
+
+- subscription.charged updates next_due_on.
+- payment.failed marks subscription as pending, not cancelled.
+
+# Risks
+
+- Existing users without next_due_on need backfill.
+
+# Follow-ups
+
+- Add monitoring for webhook failures.
+```
 ```
 
 ---
@@ -642,20 +617,19 @@ Example:
 .backstory/
   config.json
   index.sqlite
-  objects/
-    abc123.json.zst
-  summaries/
-    8f21c9a.md
-  pending/
-    latest.json
+  knowledge/
+    index.md
+    sessions/
+      index.md
+      latest.md
+      sha256-abc123.md
   redactions/
     tombstones.log
 ```
 
 ### Storage Rules
 
-* Raw sessions should be compressed.
-* Session objects should be content-addressed by hash.
+* Session records are stored as OKF markdown.
 * Stored session objects should be immutable.
 * If redaction is needed, create a new redacted object.
 * Add a tombstone entry pointing from old object to new object.
@@ -676,7 +650,7 @@ Example note:
 ```json
 {
   "ai_session": "sha256:abc123",
-  "summary": ".backstory/summaries/8f21c9a.md",
+  "summary": ".backstory/knowledge/sessions/sha256-abc123.md",
   "agent": "claude-code",
   "created_at": "2026-07-05T12:05:00Z"
 }
@@ -803,7 +777,7 @@ The webhook handler was not correctly updating subscription state after recurrin
 
 ## Raw Session
 
-`sha256:abc123`
+`.backstory/knowledge/sessions/sha256-abc123.md`
 ```
 
 ---

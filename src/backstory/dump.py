@@ -1,14 +1,26 @@
 from __future__ import annotations
 
 import hashlib
-import json
+import os
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from backstory.okf import (
+    parse_session_markdown,
+    render_session_markdown,
+    session_id_to_filename,
+)
 from backstory.storage import build_storage_paths, ensure_storage_layout
 from backstory.transcript import ExtractedDecisions
+
+TRANSCRIPT_ENV_VARS = (
+    "BACKSTORY_TRANSCRIPT",
+    "CLAUDE_TRANSCRIPT_PATH",
+    "CURSOR_TRANSCRIPT_PATH",
+    "CODEX_TRANSCRIPT_PATH",
+)
 
 
 def capture_session(
@@ -110,33 +122,51 @@ def capture_session(
     return session
 
 
+def discover_transcript_path(repo_root: Path) -> Path | None:
+    """Discover a likely transcript file without requiring an explicit flag."""
+    for env_var in TRANSCRIPT_ENV_VARS:
+        raw_path = os.environ.get(env_var)
+        if not raw_path:
+            continue
+        candidate = Path(raw_path).expanduser()
+        if candidate.exists():
+            return candidate
+
+    for candidate in _repo_transcript_candidates(repo_root):
+        if candidate.exists():
+            return candidate
+
+    return None
+
+
 def save_pending_session(repo_root: Path, session: dict[str, Any]) -> Path:
     """Save a session dict as the latest pending session.
 
     Returns the path to the pending session file.
     """
     paths = ensure_storage_layout(repo_root)
-    pending_path = paths.pending / "latest.json"
-    pending_path.write_text(json.dumps(session, indent=2) + "\n", encoding="utf-8")
+    pending_path = paths.pending
+    pending_path.write_text(render_session_markdown(session), encoding="utf-8")
     return pending_path
 
 
 def load_pending_session(repo_root: Path) -> dict[str, Any] | None:
     """Load the latest pending session, or None."""
     paths = build_storage_paths(repo_root)
-    pending_path = paths.pending / "latest.json"
+    pending_path = paths.pending
     if not pending_path.exists():
         return None
     try:
-        return json.loads(pending_path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
+        knowledge = parse_session_markdown(pending_path.read_text(encoding="utf-8"))
+        return knowledge.to_session_dict()
+    except OSError:
         return None
 
 
 def clear_pending_session(repo_root: Path) -> bool:
     """Remove the pending session file. Returns True if it existed."""
     paths = build_storage_paths(repo_root)
-    pending_path = paths.pending / "latest.json"
+    pending_path = paths.pending
     if pending_path.exists():
         pending_path.unlink()
         return True
@@ -185,3 +215,21 @@ def _compute_session_id(
     if head:
         hasher.update(head.encode())
     return f"sha256:{hasher.hexdigest()[:32]}"
+
+
+def _repo_transcript_candidates(repo_root: Path) -> list[Path]:
+    """Return repo-local transcript locations ordered from most to least likely."""
+    transcripts_dir = repo_root / ".backstory" / "transcripts"
+    candidates = [
+        transcripts_dir / "latest.json",
+        transcripts_dir / "latest.jsonl",
+        transcripts_dir / "session.json",
+        repo_root / ".backstory" / "pending" / "transcript.json",
+    ]
+
+    if transcripts_dir.exists():
+        for path in sorted(transcripts_dir.glob("*.json*")):
+            if path not in candidates:
+                candidates.append(path)
+
+    return candidates

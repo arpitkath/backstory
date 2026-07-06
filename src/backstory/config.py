@@ -5,11 +5,11 @@ from pathlib import Path
 
 from backstory.storage import (
     INDEX_DB_NAME,
-    OBJECTS_DIR_NAME,
-    PENDING_DIR_NAME,
+    KNOWLEDGE_DIR_NAME,
+    PENDING_SESSION_NAME,
     REDACTIONS_DIR_NAME,
+    SESSIONS_DIR_NAME,
     STORAGE_DIR_NAME,
-    SUMMARIES_DIR_NAME,
     ensure_storage_layout,
 )
 
@@ -18,9 +18,9 @@ DEFAULT_CONFIG = {
     "version": 1,
     "storage": {
         "root": STORAGE_DIR_NAME,
-        "objects_dir": OBJECTS_DIR_NAME,
-        "summaries_dir": SUMMARIES_DIR_NAME,
-        "pending_dir": PENDING_DIR_NAME,
+        "knowledge_dir": KNOWLEDGE_DIR_NAME,
+        "sessions_dir": SESSIONS_DIR_NAME,
+        "pending_file": PENDING_SESSION_NAME,
         "redactions_dir": REDACTIONS_DIR_NAME,
         "index_db": INDEX_DB_NAME,
     },

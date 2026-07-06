@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import json
 import subprocess
 from pathlib import Path
 from typing import Any
 
 from backstory.dump import clear_pending_session, load_pending_session
+from backstory.okf import parse_session_markdown, render_session_markdown, session_id_to_filename
 from backstory.storage import build_storage_paths, ensure_storage_layout
 
 
@@ -32,15 +32,9 @@ def attach_pending_to_commit(repo_root: Path, commit_hash: str) -> dict[str, Any
         "message": commit_msg or "",
     }
 
-    # --- Write a summary file ---
     paths = ensure_storage_layout(repo_root)
-    summary_path = paths.summaries / f"{commit_hash}.md"
-    summary_content = _render_summary(session, commit_hash, commit_msg)
-    summary_path.write_text(summary_content, encoding="utf-8")
-
-    # --- Save the session object ---
-    object_path = paths.objects / f"{session['session_id']}.json"
-    object_path.write_text(json.dumps(session, indent=2) + "\n", encoding="utf-8")
+    stable_path = paths.sessions / session_id_to_filename(session["session_id"])
+    stable_path.write_text(render_session_markdown(session), encoding="utf-8")
 
     # --- Write a Git note ---
     _write_git_note(repo_root, commit_hash, session)
@@ -70,6 +64,8 @@ def _get_commit_message(repo_root: Path, commit_hash: str) -> str | None:
 
 def _write_git_note(repo_root: Path, commit_hash: str, session: dict) -> None:
     """Attach a Git note with session metadata to the commit."""
+    import json
+
     note = json.dumps(
         {
             "ai_session": session.get("session_id"),
@@ -92,61 +88,44 @@ def _write_git_note(repo_root: Path, commit_hash: str, session: dict) -> None:
 
 def _render_summary(session: dict, commit_hash: str, commit_msg: str | None) -> str:
     """Render a human-readable summary markdown file."""
-    agent = session.get("agent", {})
-    task = session.get("task", {})
-    files = session.get("files", {})
-    reasoning = session.get("reasoning_summary", {})
-
+    rendered = render_session_markdown(session)
+    parsed = parse_session_markdown(rendered)
     lines: list[str] = []
     lines.append(f"# backstory for Commit {commit_hash}")
     lines.append("")
-
     if commit_msg:
         lines.append(f"**{commit_msg}**")
         lines.append("")
-
-    if task.get("title"):
-        lines.append("## Task")
-        lines.append("")
-        lines.append(task["title"])
-        lines.append("")
-
-    if reasoning.get("why"):
+    lines.append("## Task")
+    lines.append("")
+    lines.append(parsed.task_title)
+    lines.append("")
+    if parsed.why:
         lines.append("## Why")
         lines.append("")
-        lines.append(reasoning["why"])
+        lines.append(parsed.why)
         lines.append("")
-
-    changed = files.get("changed", [])
-    if changed:
+    if parsed.files_changed:
         lines.append("## Files Changed")
         lines.append("")
-        for f in changed:
+        for f in parsed.files_changed:
             lines.append(f"- `{f}`")
         lines.append("")
-
-    decisions = reasoning.get("decisions", [])
-    if decisions:
+    if parsed.decisions:
         lines.append("## Key Decisions")
         lines.append("")
-        for d in decisions:
+        for d in parsed.decisions:
             lines.append(f"- {d}")
         lines.append("")
-
-    risks = reasoning.get("risks", [])
-    if risks:
+    if parsed.risks:
         lines.append("## Risks")
         lines.append("")
-        for r in risks:
+        for r in parsed.risks:
             lines.append(f"- {r}")
         lines.append("")
-
-    if agent.get("name"):
-        lines.append(f"Agent: {agent['name']}")
-    if agent.get("model"):
-        lines.append(f"Model: {agent['model']}")
+    lines.append(f"Agent: {parsed.agent_name}")
+    if parsed.agent_model:
+        lines.append(f"Model: {parsed.agent_model}")
     lines.append("")
-
-    lines.append(f"Session ID: {session.get('session_id', 'unknown')}")
-
+    lines.append(f"Session ID: {parsed.session_id or session.get('session_id', 'unknown')}")
     return "\n".join(lines)

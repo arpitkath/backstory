@@ -8,18 +8,20 @@ from backstory.storage import BackstoryPaths, build_storage_paths, ensure_storag
 
 
 class StorageTestCase(unittest.TestCase):
-    def test_build_storage_paths_uses_repo_root_backstory_layout(self):
+    def test_build_storage_paths_uses_repo_root_knowledge_layout(self):
         repo_root = Path("/tmp/example-repo")
 
         self.assertEqual(
             build_storage_paths(repo_root),
             BackstoryPaths(
                 root=repo_root / ".backstory",
-                objects=repo_root / ".backstory" / "objects",
-                summaries=repo_root / ".backstory" / "summaries",
-                pending=repo_root / ".backstory" / "pending",
+                knowledge=repo_root / ".backstory" / "knowledge",
+                sessions=repo_root / ".backstory" / "knowledge" / "sessions",
+                pending=repo_root / ".backstory" / "knowledge" / "sessions" / "latest.md",
                 redactions=repo_root / ".backstory" / "redactions",
                 index_db=repo_root / ".backstory" / "index.sqlite",
+                knowledge_index=repo_root / ".backstory" / "knowledge" / "index.md",
+                sessions_index=repo_root / ".backstory" / "knowledge" / "sessions" / "index.md",
             ),
         )
 
@@ -30,9 +32,8 @@ class StorageTestCase(unittest.TestCase):
             paths = ensure_storage_layout(repo_root)
 
             self.assertTrue(paths.root.is_dir())
-            self.assertTrue(paths.objects.is_dir())
-            self.assertTrue(paths.summaries.is_dir())
-            self.assertTrue(paths.pending.is_dir())
+            self.assertTrue(paths.knowledge.is_dir())
+            self.assertTrue(paths.sessions.is_dir())
             self.assertTrue(paths.redactions.is_dir())
             self.assertEqual(paths.index_db, repo_root / ".backstory" / "index.sqlite")
             self.assertFalse(paths.index_db.exists())

@@ -6,6 +6,7 @@ from pathlib import Path
 from backstory.attach import _get_commit_message, _render_summary
 from backstory.dump import capture_session, save_pending_session
 from backstory.attach import attach_pending_to_commit
+from backstory.okf import session_id_to_filename
 
 
 def init_repo(path: Path) -> None:
@@ -63,6 +64,18 @@ class AttachTestCase(unittest.TestCase):
 
         from backstory.dump import load_pending_session
         self.assertIsNone(load_pending_session(self.repo_root))
+
+    def test_attach_writes_stable_markdown_session(self):
+        session = capture_session(self.repo_root, task="Fix bug")
+        pending = save_pending_session(self.repo_root, session)
+
+        result = attach_pending_to_commit(self.repo_root, self.commit_hash)
+
+        stable = self.repo_root / ".backstory" / "knowledge" / "sessions" / session_id_to_filename(session["session_id"])
+        self.assertTrue(stable.exists())
+        self.assertFalse(pending.exists())
+        self.assertIsNotNone(result)
+        self.assertIn("type: Backstory Session", stable.read_text())
 
     def test_attach_returns_none_when_no_pending(self):
         result = attach_pending_to_commit(self.repo_root, self.commit_hash)

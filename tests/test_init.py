@@ -34,9 +34,8 @@ class InitTestCase(unittest.TestCase):
 
         self.assertTrue(result["storage_created"])
         self.assertTrue((self.repo_root / ".backstory").is_dir())
-        self.assertTrue((self.repo_root / ".backstory" / "objects").is_dir())
-        self.assertTrue((self.repo_root / ".backstory" / "summaries").is_dir())
-        self.assertTrue((self.repo_root / ".backstory" / "pending").is_dir())
+        self.assertTrue((self.repo_root / ".backstory" / "knowledge").is_dir())
+        self.assertTrue((self.repo_root / ".backstory" / "knowledge" / "sessions").is_dir())
         self.assertTrue((self.repo_root / ".backstory" / "redactions").is_dir())
 
     def test_init_writes_config(self):

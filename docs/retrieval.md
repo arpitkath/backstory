@@ -23,9 +23,10 @@ backstory why HEAD
 The tool should also answer:
 
 ```bash
-backstory why-file app/api/webhooks/razorpay/route.ts
-backstory why-line app/api/webhooks/razorpay/route.ts:120
-backstory why-code app/api/webhooks/razorpay/route.ts:100-160
+backstory file app/api/webhooks/razorpay/route.ts
+backstory line app/api/webhooks/razorpay/route.ts:120
+backstory range app/api/webhooks/razorpay/route.ts:100-160
+backstory code app/api/webhooks/razorpay/route.ts:100-160
 ```
 
 The goal is to explain the history and reasoning behind a specific file, function, class, or line range.
@@ -52,7 +53,7 @@ For a given code section, the tool should find:
 When the user asks:
 
 ```bash
-backstory why-code src/billing/subscription.ts:80-140
+backstory code src/billing/subscription.ts:80-140
 ```
 
 The tool should:
@@ -359,7 +360,7 @@ file_changes
 - change_type
 - lines_added
 - lines_deleted
-- hunks_json
+- patch_hunks
 
 session_files
 - session_id

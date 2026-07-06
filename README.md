@@ -24,12 +24,6 @@ Backstory is a local-first AI memory layer for Git repositories. It captures ses
 ## Quick Install
 
 ```bash
-pipx install backstory-cli
-```
-
-Or with pip:
-
-```bash
 pip install backstory-cli
 ```
 

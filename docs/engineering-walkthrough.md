@@ -85,18 +85,20 @@ The capture pipeline has four stages:
 **Stage 1 — Transcript discovery.** If no explicit `--transcript` path is
 given, the CLI walks environment variables
 (`BACKSTORY_TRANSCRIPT`, `CLAUDE_TRANSCRIPT_PATH`, etc.) and known repo-local
-paths (`.backstory/transcripts/latest.json`) to auto-discover a transcript.
+paths to auto-discover a transcript. Any input transcript is an optional
+artifact from the AI tool — backstory does not store it.
 
-**Stage 2 — Import & normalise.** The raw transcript JSON is read and
-normalised into a standard `[{role, content}, ...]` message list. The
-normaliser (`transcript.py:normalize_messages`) handles Claude Code, Codex,
-and generic formats.
+**Stage 2 — Import & normalise.** The raw transcript (AI tool output, usually
+JSON) is read and normalised into a standard `[{role, content}, ...]` message
+list. The normaliser (`transcript.py:normalize_messages`) handles Claude Code,
+Codex, and generic formats.
 
 **Stage 3 — Summarisation (optional).** The normalised messages are sent to
 the original AI agent's CLI (e.g. `claude --print`), which is prompted to
-return a structured JSON summary containing task, decisions, risks,
-follow-ups, and files changed. Only this structured data is kept — the raw
-conversation is discarded.
+return a structured summary as JSON containing task, decisions, risks,
+follow-ups, and files changed. This JSON is an ephemeral intermediate format —
+it is parsed into `ExtractedDecisions` and then discarded. Only the extracted
+facts are persisted in OKF markdown.
 
 **Stage 4 — Session assembly & save.** `capture_session()` in `dump.py` reads
 current Git state (branch, HEAD hash, staged/unstaged diffs, changed files),

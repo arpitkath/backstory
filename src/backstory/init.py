@@ -15,6 +15,51 @@ CLAUDE_SETTINGS_CONTENT = {
     },
 }
 
+# Known AI tool transcript env vars for status checking
+AI_TRANSCRIPT_ENV_VARS = {
+    "claude": "CLAUDE_TRANSCRIPT_PATH",
+    "cursor": "CURSOR_TRANSCRIPT_PATH",
+    "codex": "CODEX_TRANSCRIPT_PATH",
+}
+
+# Known AI tool settings file paths (relative to repo root)
+AI_SETTINGS_FILES = {
+    "claude": ".claude/settings.json",
+    "cursor": ".cursor/settings.json",
+}
+
+
+def check_ai_settings(repo_root: Path) -> dict[str, bool | str]:
+    """Check the status of AI tool integrations in the repository.
+
+    Returns a dict keyed by tool name, where the value is:
+    - ``True`` if the settings file exists with expected transcript path
+    - ``"missing"`` if the settings file doesn't exist
+    - ``"misconfigured"`` if the file exists but lacks expected env var
+    """
+    result: dict[str, bool | str] = {}
+
+    for tool, rel_path in AI_SETTINGS_FILES.items():
+        path = repo_root / rel_path
+        if not path.exists():
+            result[tool] = "missing"
+            continue
+
+        try:
+            content = json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            result[tool] = "misconfigured"
+            continue
+
+        env_var = AI_TRANSCRIPT_ENV_VARS.get(tool)
+        env_config = content.get("env", {}) if isinstance(content, dict) else {}
+        if isinstance(env_config, dict) and env_config.get(env_var) == ".backstory/transcripts/latest.json":
+            result[tool] = True
+        else:
+            result[tool] = "misconfigured"
+
+    return result
+
 
 def initialize_repo(
     repo_root: Path,

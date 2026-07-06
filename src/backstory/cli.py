@@ -12,7 +12,7 @@ from backstory.contradiction import detect_potential_contradictions
 from backstory.dump import capture_session, load_pending_session, save_pending_session
 from backstory.dump import discover_transcript_path
 from backstory.hooks import hooks_installed, install_hooks, uninstall_hooks
-from backstory.init import initialize_repo, print_init_summary
+from backstory.init import check_ai_settings, initialize_repo, print_init_summary
 from backstory.okf import parse_session_markdown, render_session_markdown, session_id_to_filename
 from backstory.retrieval import (
     commit_for_line,
@@ -236,6 +236,18 @@ def _handle_status(args: argparse.Namespace) -> int:
     pre_icon = "✓" if pre_commit else "✗"
     post_icon = "✓" if post_commit else "✗"
     print(f"Git hooks:     pre-commit={pre_icon}  post-commit={post_icon}")
+
+    ai_settings = check_ai_settings(repo)
+    for tool in sorted(ai_settings):
+        status = ai_settings[tool]
+        if status is True:
+            print(f"  {tool.capitalize():10s} settings ✓")
+        elif status == "missing":
+            hint = " (run 'backstory init')" if tool == "claude" else ""
+            print(f"  {tool.capitalize():10s} settings ✗{hint}")
+        elif status == "misconfigured":
+            print(f"  {tool.capitalize():10s} settings ⚠ (missing transcript path)")
+
     print(f"Current branch: {branch}")
     print(f"Pending session: {'yes' if pending else 'no'}")
     print(f"Stored sessions: {session_count}")

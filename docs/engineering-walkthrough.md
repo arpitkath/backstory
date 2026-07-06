@@ -5,158 +5,603 @@ session context from tool-native hooks or exporters, stores the durable record
 as OKF markdown, attaches that memory to commits, and later retrieves the
 reasoning behind code changes.
 
-## What It Does
+- [Architecture Overview](#architecture-overview)
+- [Data Flow (End-to-End)](#data-flow-end-to-end)
+- [High-Level Design](#high-level-design)
+- [Low-Level Design](#low-level-design)
+- [Contradiction Detection](#contradiction-detection)
+- [Indexing and Search](#indexing-and-search)
+- [Current Limitations](#current-limitations)
 
-The tool helps answer questions like:
+---
 
-- Why did this commit happen?
-- Why does this file or line exist?
-- What prior AI context matters for this diff?
+## Architecture Overview
 
-The current implementation is fully local. It does not depend on a service or
-hosted backend.
+```
+┌─────────────┐     ┌──────────────┐     ┌────────────────┐     ┌──────────────┐
+│  AI Tool     │────▶│  backstory   │────▶│  OKF Markdown  │────▶│  Git Commit  │
+│  (Claude,    │     │  dump        │     │  .backstory/   │     │  Link        │
+│  Codex, etc) │     │              │     │  knowledge/    │     │              │
+└─────────────┘     └──────────────┘     └────────────────┘     └──────┬───────┘
+                                                                        │
+                                              ┌─────────────────────────┤
+                                              │                         │
+                                              ▼                         ▼
+                                  ┌───────────────────┐     ┌───────────────────┐
+                                  │  Retrieval        │     │  Contradiction    │
+                                  │  (why / file /    │     │  Detection        │
+                                  │   line / range)   │     │  (backstory diff) │
+                                  └───────────────────┘     └───────────────────┘
+```
 
-## Storage Model
+The system has four layers:
 
-Backstory now uses OKF markdown as the persisted source of truth for session
-memory.
+1. **Capture** — Ingests AI sessions via `backstory dump`. Reads a transcript
+   (or accepts structured decisions directly), normalises it, optionally
+   summarises it through the original AI agent, and writes an OKF markdown
+   file.
+2. **Storage** — Persists the extracted reasoning (decisions, risks,
+   follow-ups) as OKF markdown files under `.backstory/knowledge/sessions/`.
+   Git state, diffs, and file-change metadata are stored alongside — no raw
+   conversation content.
+3. **Link** — Attaches a saved session to a Git commit via `backstory attach
+   HEAD`. Writes a stable session file, clears the pending session, and
+   creates a Git note pointing back to the session for cross-reference.
+4. **Retrieve** — Answers questions like "Why did this commit happen?" or "Why
+   does this line exist?" by correlating Git history (log, blame) with stored
+   sessions. Also warns when a new diff appears to contradict earlier
+   decisions.
 
-Primary storage layout:
+---
 
-```text
+## Data Flow (End-to-End)
+
+### 1. Init — `backstory init`
+
+Creates the storage layout and writes a default config.
+
+```
 .backstory/
   config.json
-  index.sqlite
+  index.sqlite          (reserved for future use)
   knowledge/
     index.md
     sessions/
       index.md
-      latest.md
-      sha256-<session>.md
+      latest.md         (pending session file)
+      sha256-<hash>.md  (stable attached sessions)
   redactions/
     tombstones.log
 ```
 
-Key points:
+`initialize_repo()` in `init.py` calls `ensure_storage_layout()` to create the
+directory tree, writes `config.json` with default capture settings, and
+optionally installs pre-commit and post-commit Git hooks.
 
-- `latest.md` is the pending session file.
-- Attached sessions are stable `.md` files under `knowledge/sessions/`.
-- The repository still keeps config and local index metadata alongside the OKF
-  bundle.
+### 2. Capture — `backstory dump`
 
-## Main Flow
+The capture pipeline has four stages:
 
-### 1. Initialize
+**Stage 1 — Transcript discovery.** If no explicit `--transcript` path is
+given, the CLI walks environment variables
+(`BACKSTORY_TRANSCRIPT`, `CLAUDE_TRANSCRIPT_PATH`, etc.) and known repo-local
+paths (`.backstory/transcripts/latest.json`) to auto-discover a transcript.
 
-Run:
+**Stage 2 — Import & normalise.** The raw transcript JSON is read and
+normalised into a standard `[{role, content}, ...]` message list. The
+normaliser (`transcript.py:normalize_messages`) handles Claude Code, Codex,
+and generic formats.
 
-```bash
-backstory init
+**Stage 3 — Summarisation (optional).** The normalised messages are sent to
+the original AI agent's CLI (e.g. `claude --print`), which is prompted to
+return a structured JSON summary containing task, decisions, risks,
+follow-ups, and files changed. Only this structured data is kept — the raw
+conversation is discarded.
+
+**Stage 4 — Session assembly & save.** `capture_session()` in `dump.py` reads
+current Git state (branch, HEAD hash, staged/unstaged diffs, changed files),
+merges it with the extracted decisions, computes a content-addressed session
+ID (`sha256:<truncated-hash>`), and writes the result as `latest.md` in OKF
+markdown.
+
+### 3. Link — `backstory attach HEAD`
+
+`attach_pending_to_commit()` loads the pending session from `latest.md`,
+augments it with the target commit's hash and message, writes a stable copy
+to `sha256-<hash>.md`, attaches a Git note with session metadata, and clears
+the pending file. The commit hash is stored in the session's frontmatter so
+correlation works in either direction.
+
+### 4. Retrieve — `backstory why HEAD`
+
+Retrieval uses Git's own history rather than a separate index. The key insight
+is that commits are the natural key: each stored session records the commit
+hash it was attached to, so looking up "why a commit" means reading its linked
+session file.
+
+### 5. Cross-reference — `backstory diff`
+
+`backstory diff` combines retrieval and contradiction detection:
+1. Lists files changed in the working tree.
+2. For each changed file, shows the most recent commit that touched it.
+3. Runs contradiction detection against all attached sessions.
+
+---
+
+## High-Level Design
+
+### Module Map
+
+| Module          | Responsibility |
+|-----------------|----------------|
+| `cli.py`        | Argument parsing, command dispatch |
+| `init.py`       | Repository initialisation, config writing, hook installation |
+| `dump.py`       | Session capture, transcript discovery, Git state capture |
+| `attach.py`     | Commit linkage, Git note writing, pending session management |
+| `okf.py`        | OKF markdown parsing and rendering |
+| `storage.py`    | Path definitions, storage layout creation |
+| `retrieval.py`  | Git-based code context retrieval (log, blame, diff) |
+| `contradiction.py` | Knowledge-driven contradiction detection |
+| `transcript.py` | Transcript import, normalisation, agent-name detection |
+| `summarize.py`  | Agent-driven transcript summarisation |
+| `config.py`     | Configuration defaults and loading |
+| `hooks.py`      | Git hook installation and management |
+| `git.py`        | Basic Git repository detection |
+
+### Key Design Decisions
+
+**1. OKF markdown as the sole persistence format.**
+Sessions are stored as YAML-frontmatter markdown, not JSON. This keeps them
+human-readable, Git-friendly (meaningful diffs), and directly editable by both
+people and AI tools. Only the extracted decisions, risks, and metadata are
+persisted, never the raw conversation.
+
+**2. Git-native retrieval.**
+Retrieval leans on `git log --follow` and `git blame --porcelain` rather than
+a dedicated database. This avoids synchronisation problems — Git history is
+the source of truth. The trade-off is that cross-session searches (e.g.
+"find all sessions that mention auth") are O(n) scans of session files, which
+is fine at repository scale but would not scale to thousands of sessions
+without an index.
+
+**3. Agent self-summarisation.**
+When a transcript is available, backstory asks the original AI agent
+(via its CLI) to summarise its own work. This preserves the agent's internal
+understanding of what decisions were made, rather than relying on a fixed
+extraction heuristic. The raw conversation is discarded after summarisation.
+
+**4. No Git hooks for capture.**
+Contradiction detection and retrieval are read-only operations that scan
+already-stored knowledge. Capture comes from tool-native callbacks, not Git
+hooks. The optional hooks (`pre-commit`, `post-commit`) exist to automate
+`dump` and `attach` for tools that don't support native callbacks, but they
+are not the primary path.
+
+**5. Content-addressed session IDs.**
+Each session gets a `sha256:<truncated>` ID computed from the timestamp,
+task description, decisions, and Git HEAD. This makes session IDs
+deterministic and verifiable — the same inputs produce the same ID.
+
+---
+
+## Low-Level Design
+
+### Core Data Structures
+
+**`SessionKnowledge`** (`okf.py`) — The central domain object.
+
+```python
+@dataclass
+class SessionKnowledge:
+    session_id: str        # sha256:<truncated>
+    created_at: str        # ISO 8601
+    task_title: str
+    user_prompt: str
+    agent_name: str
+    agent_model: str | None
+    agent_source: str       # "hook" or "manual"
+    branch: str
+    head: str               # Git HEAD hash at capture time
+    commit_hash: str | None # set during attach
+    commit_message: str | None
+    files_changed: list[str]
+    staged_diff: str
+    unstaged_diff: str
+    why: str
+    decisions: list[str]
+    risks: list[str]
+    followups: list[str]
+    alternatives: list[str]
 ```
 
-This creates the storage layout and prepares the local index and OKF bundle.
+**`BackstoryPaths`** (`storage.py`) — Immutable path bundle.
 
-### 2. Capture a session
-
-Capture is expected to happen inside the AI tool itself through a hook,
-callback, or transcript export.
-
-```bash
-backstory dump
+```python
+@dataclass(frozen=True)
+class BackstoryPaths:
+    root: Path            # .backstory/
+    knowledge: Path       # .backstory/knowledge/
+    sessions: Path        # .backstory/knowledge/sessions/
+    pending: Path         # .backstory/knowledge/sessions/latest.md
+    redactions: Path      # .backstory/redactions/
+    index_db: Path        # .backstory/index.sqlite (reserved)
+    knowledge_index: Path # .backstory/knowledge/index.md
+    sessions_index: Path  # .backstory/knowledge/sessions/index.md
 ```
 
-Or point it at a transcript produced by the tool:
+**`CommitInfo`** (`retrieval.py`) — Git commit metadata for retrieval.
 
-```bash
-backstory dump --agent claude --transcript ./transcript.md
+```python
+@dataclass(frozen=True)
+class CommitInfo:
+    hash: str
+    message: str
+    authored_at: str  # ISO 8601
+    author: str
 ```
 
-If no transcript is provided, the CLI can auto-discover one from environment
-variables or common repo-local transcript paths.
+**`ExtractedDecisions`** (`transcript.py`) — Structured summary from agent.
 
-### 3. Commit
-
-Git still records the final code change, but it is not the primary capture
-surface. Backstory uses the commit as the linkage point for the already
-captured session.
-
-### 4. Retrieve context
-
-The retrieval surface is code-aware:
-
-```bash
-backstory why HEAD
-backstory file src/auth/session.ts
-backstory line src/auth/session.ts:120
-backstory range src/auth/session.ts:100-160
-backstory code src/auth/session.ts:100-160
-backstory diff
+```python
+@dataclass
+class ExtractedDecisions:
+    agent_name: str
+    model: str | None
+    task: str
+    decisions: list[str]
+    risks: list[str]
+    followups: list[str]
+    files_changed: list[str]
+    alternatives: list[str]
 ```
 
-`backstory diff` also surfaces contradiction warnings when a new change appears
-to reverse an earlier recorded decision.
+### OKF Markdown Format
 
-## Integration With Claude, Codex, and Cursor
+Each session file is a YAML-frontmatter markdown document:
 
-Backstory is file-based, not SDK-based.
+```markdown
+---
+type: Backstory Session
+title: Fix subscription renewal handling
+description: The webhook handler was not updating the next billing date...
+resource: git:8f21c9a
+tags: [backstory, ai-session]
+timestamp: 2026-07-06T12:00:00+00:00
+session_id: sha256:a1b2c3d4...
+agent: claude-code
+model: claude-sonnet-5
+source: manual
+branch: main
+head: 8f21c9a...
+commit_hash: 8f21c9a...
+commit_message: Fix subscription renewal handling
+files_changed:
+  - app/api/webhooks/razorpay/route.ts
+  - lib/subscription.ts
+---
 
-Integration options:
+# Task
 
-- Export a transcript file and hand it to `backstory dump --transcript ...`
-- Let the tool-native hook or callback invoke Backstory automatically
-- Use the commit attachment step to bind the session to Git history
+Fix subscription renewal handling
 
-The tool does not require a special extension to be useful. It works with any
-AI tool that can emit a local transcript or leave a diff in the repository.
+# Decisions
 
-## What The Commands Mean
+- subscription.charged updates next_due_on
+- payment.failed marks subscription as pending, not cancelled
+- webhook handling must be idempotent
 
-- `init`: create local storage and indices
-- `dump`: ingest the current AI session into OKF markdown
-- `attach`: link a saved session to a commit
-- `why`: explain a commit
-- `show`: inspect a stored session
-- `search`: find sessions by text and metadata
-- `file`, `line`, `range`, `code`: explain code with history context
-- `diff`: inspect uncommitted changes with prior context warnings
-- `status`: inspect local memory state
-- `redact`: re-run redaction on stored sessions
+# Risks
 
-Some command names are already implemented, and some are still the intended
-surface area from the docs. Treat the code as authoritative for exact behavior.
+- Idempotency depends on storing Razorpay event IDs
 
-## Security And Privacy
+# Diff
 
-Backstory is local by default.
+## Staged
 
-- It stores session memory in the repository
-- It redacts obvious secrets before persistence
-- It does not upload data by default
-- It keeps raw transcript handling out of the persisted session record
-
-## How To Work On The Codebase
-
-Important entry points:
-
-- `src/backstory/cli.py`
-- `src/backstory/dump.py`
-- `src/backstory/attach.py`
-- `src/backstory/storage.py`
-- `src/backstory/okf.py`
-- `src/backstory/contradiction.py`
-
-Tests live under `tests/` and cover the storage layout, parsing, attachment,
-transcript discovery, and contradiction warnings.
-
-Verification command:
-
-```bash
-PYTHONPATH=src /tmp/backstory-venv/bin/python -m pytest -q
+```diff
+...
 ```
+```
+
+The frontmatter stores all structured metadata. The body sections are
+variable-length human-readable lists. This structure is parsed by
+`parse_session_markdown()` in `okf.py`, which splits on `---` fences and
+interprets `# Section Name` headings.
+
+### Git Interaction Layer
+
+`retrieval.py` wraps git commands:
+
+- **`commits_for_file(path)`** — `git log --follow --format=... <path>`
+  Retrieves all commits that touched a file, most recent first.
+
+- **`commit_for_line(path, line)`** — `git blame -L<line>,<line> --porcelain`
+  Finds the last commit that modified a specific line.
+
+- **`commits_for_range(path, start, end)`** — `git blame -L<start>,<end> --porcelain`
+  Gets distinct commits touching a range of lines.
+
+- **`files_in_diff()`** — `git diff --name-only HEAD`
+  Lists files changed in the working tree.
+
+These are wrappers around `subprocess.run(["git", ...])`. The porcelain format
+is used for blame so output is machine-parseable.
+
+### Session Lifecycle
+
+```
+[time]  backstory dump          backstory attach HEAD     backstory why HEAD
+        ┌──────────────┐        ┌──────────────┐          ┌──────────────┐
+        │ read         │        │ load         │          │ find session │
+        │ transcript   │ ──────▶│ pending      │ ────────▶│ by commit    │
+        │ normalise    │        │ set commit   │          │ render       │
+        │ summarise    │        │ write stable │          │ output       │
+        │ save pending │        │ git notes    │          │              │
+        │ latest.md    │        │ clear pending│          │              │
+        └──────────────┘        └──────────────┘          └──────────────┘
+```
+
+- **Pending**: `latest.md` exists after `dump`, before `attach`.
+- **Stable**: `sha256-<id>.md` exists after `attach`. The session is now
+  linked to a commit and will be included in contradiction checks.
+- **No pending**: After attach, `latest.md` is removed. The next `dump`
+  creates a fresh one.
+
+### Git Notes
+
+When attaching, backstory writes a lightweight Git note to the target commit:
+
+```json
+{
+  "ai_session": "sha256:a1b2c3...",
+  "agent": "claude-code",
+  "created_at": "2026-07-06T12:00:00+00:00"
+}
+```
+
+This provides a reverse lookup path: given a commit, find its session.
+Git notes are best-effort (silently ignored if notes are not configured).
+
+### CLI Command Wiring
+
+Commands and their handler mapping in `_dispatch()`:
+
+| Command    | Handler         | Status |
+|------------|-----------------|--------|
+| `init`     | `_handle_init`  | ✅ |
+| `dump`     | `_handle_dump`  | ✅ |
+| `attach`   | `_handle_attach`| ✅ |
+| `file`     | `_handle_file`  | ✅ |
+| `line`     | `_handle_line`  | ✅ |
+| `range`    | `_handle_range` | ✅ |
+| `code`     | `_handle_range` | ✅ (alias for range) |
+| `diff`     | `_handle_diff`  | ✅ |
+| `why`      | —               | 🔲 not yet wired |
+| `show`     | —               | 🔲 not yet wired |
+| `search`   | —               | 🔲 not yet wired |
+| `context`  | —               | 🔲 not yet wired |
+| `status`   | —               | 🔲 not yet wired |
+| `redact`   | —               | 🔲 not yet wired |
+| `repair`   | —               | 🔲 not yet wired |
+
+---
+
+## Contradiction Detection
+
+Contradiction detection lives in `contradiction.py`. It is a file-overlap plus
+pattern-matching algorithm — intentionally conservative rather than semantic.
+
+### Algorithm
+
+```
+for each attached session:
+    if session shares any changed file with the current diff:
+        for each decision in that session:
+            if decision looks like a reversal pattern:
+                warn
+                break (one warning per session)
+```
+
+**Step 1: Load all attached sessions.** `_load_attached_sessions()` reads
+every `.md` file in `.backstory/knowledge/sessions/` (excluding `latest.md`),
+parses the OKF markdown, and converts each to a session dict.
+
+**Step 2: File-overlap check.** The current diff's changed files are compared
+against each session's `files_changed` list. Only sessions with at least one
+file in common are considered — if a session touched completely different
+files, no contradiction is possible.
+
+**Step 3: Reversal-pattern detection.** `_looks_likes_reversal()` runs a regex
+against each decision text. The `NEGATION_PATTERNS` tuple contains reversal
+indicators:
+
+```python
+NEGATION_PATTERNS = (
+    r"\bnot\b",
+    r"\bnever\b",
+    r"\binstead\b",
+    r"\bavoid\b",
+    r"\bprevent\b",
+    r"\bno longer\b",
+    r"\brather than\b",
+)
+```
+
+If a decision contains any of these patterns, it triggers a warning. For
+example, the decision *"payment.failed marks subscription as pending, not
+cancelled"* matches `\bnot\b` and would warn if a new change touches the
+payment file.
+
+**Step 4: Warning assembly.** Each warning includes the commit hash, the
+overlapping file(s), and the decision text.
+
+### Design Rationale
+
+- **Conservative by design.** The detection uses exact file paths and simple
+  text patterns rather than semantic understanding. This produces fewer
+  false positives at the cost of missing some subtle reversals.
+- **File-first.** Only sessions touching overlapping files are checked. This
+  limits noise and keeps the O(n) scan bounded by the size of the diff.
+- **One warning per session.** Once a reversal pattern is found in a session,
+  that session is done. This avoids spamming the user with duplicate warnings
+  from the same session.
+
+### Current Limitations
+
+- **Pattern-only.** A reversal like *"change subscription.charged to call the
+  old API again"* (without any negation keyword) would not be detected.
+- **No semantic analysis.** The detection cannot distinguish *"not changed"*
+  from *"not cancelled"* — both contain `\bnot\b`.
+- **File-name matching.** Two changes to the same conceptual code in
+  differently-named files would not trigger a warning.
+- **No severity ranking.** All warnings are presented equally, even though
+  some reversals are more consequential than others.
+
+---
+
+## Indexing and Search
+
+### Current Indexing Strategy
+
+Backstory does **not** maintain a separate content index for search. Instead,
+it relies on two mechanisms:
+
+**1. Filesystem-based session storage.**
+All sessions are stored as individual `.md` files in
+`.backstory/knowledge/sessions/`. The directory structure is the primary
+"index":
+
+- `latest.md` — the single pending session (unattached).
+- `sha256-<id>.md` — stable attached sessions, one per commit.
+
+Listing sessions is `ls .backstory/knowledge/sessions/*.md`. Loading a
+session is `read_file → parse_frontmatter → parse_sections`.
+
+**2. Index markdown files.**
+Two `index.md` files serve as optional human-readable registries:
+
+- `.backstory/knowledge/index.md` — knowledge directory index.
+- `.backstory/knowledge/sessions/index.md` — sessions directory index.
+
+These are created during `init` with a header line and left for future
+population. They are not currently updated automatically.
+
+**3. Git-based code retrieval.**
+For retrieval queries (`backstory file`, `line`, `range`), Backstory leans on
+Git rather than a database:
+
+```
+commits_for_file(path)      → git log --follow --format=... <path>
+commit_for_line(path, n)    → git blame -L<n>,<n> --porcelain <path>
+commits_for_range(p, s, e)  → git blame -L<s>,<e> --porcelain <path>
+```
+
+These return `CommitInfo` objects (hash, message, author, date). The caller
+correlates commit hashes with session files by scanning the session directory
+for files whose frontmatter contains a matching `commit_hash`.
+
+**4. Session-to-commit correlation.**
+Because sessions store the commit hash in frontmatter, and Git notes store
+the session ID, cross-referencing works in both directions:
+
+- **Commit → Session**: `git log` returns a hash → scan session files for
+  frontmatter with `commit_hash: <hash>` → read the session.
+- **Session → Commit**: read the session's `commit_hash` field → `git show`.
+
+This is an O(n) scan of session files. With hundreds of sessions, this
+remains fast. With thousands, a proper index (index.sqlite) would be needed.
+
+### The `index.sqlite` Placeholder
+
+The file `.backstory/index.sqlite` is defined in the storage layout but is
+**not yet implemented**. It is reserved for future use as a SQLite-backed
+full-text search index. The intended schema would support:
+
+- Full-text search over session titles, decisions, risks, and file paths.
+- Fast lookup of sessions by commit hash (avoiding O(n) file scans).
+- Boolean queries combining file path, agent name, date range, and keywords.
+
+### How Retrieval Works for Each Command
+
+**`why HEAD`** (not yet wired in dispatch, defined in CLI):
+Reads the most recent commit hash from `git rev-parse HEAD`, finds the
+attached session by scanning frontmatter for `commit_hash`, and renders
+the session's decisions, risks, and why.
+
+**`file <path>`**:
+1. `git log --follow --format=... <path>` → list of commits.
+2. For each commit hash, scan session files for matching `commit_hash`.
+3. Render `CommitInfo` and linked session IDs.
+
+**`line <path>:<line>`**:
+1. `git blame -L<line>,<line> --porcelain <path>` → one commit hash.
+2. Look up the commit in session files.
+3. Render the commit and its linked session.
+
+**`range <path>:<start>-<end>`**:
+1. `git blame -L<start>,<end> --porcelain <path>` → unique commit hashes.
+2. For each hash, look up in session files.
+3. Return sorted by date descending.
+
+**`diff`**:
+1. `git diff --name-only HEAD` → changed files.
+2. For each file, `commits_for_file(path)` → most recent commit.
+3. Run `detect_potential_contradictions()` for contradiction warnings.
+
+### Future Indexing Design
+
+When `index.sqlite` is implemented, the architecture will look like:
+
+```
+┌──────────────────────────────────────────┐
+│              index.sqlite                │
+│                                          │
+│  sessions(                               │
+│    id TEXT PRIMARY KEY,                  │
+│    commit_hash TEXT,                     │
+│    created_at TEXT,                      │
+│    agent_name TEXT,                      │
+│    task_title TEXT,                      │
+│    why TEXT,                             │
+│  )                                       │
+│                                          │
+│  decisions(                              │
+│    id INTEGER,                           │
+│    session_id TEXT REFERENCES sessions,  │
+│    decision TEXT,                        │
+│  )                                       │
+│                                          │
+│  files(                                  │
+│    id INTEGER,                           │
+│    session_id TEXT REFERENCES sessions,  │
+│    file_path TEXT,                       │
+│  )                                       │
+│                                          │
+│  sessions_fts (FTS5 virtual table)       │
+└──────────────────────────────────────────┘
+```
+
+Benefits:
+- O(1) session lookup by commit hash instead of O(n) file scan.
+- Full-text search across all session text (`backstory search`).
+- Boolean queries: `backstory search "auth AND decisions:not"`.
+- No filesystem dependency for retrieval.
+
+The index would be built incrementally during `attach`: after writing the
+stable session file, backstory would insert a row into `index.sqlite`. A
+`repair` command would rebuild the index from scratch by re-reading all
+session files.
+
+---
 
 ## Current Limitations
 
-- Retrieval is still heuristic and Git-based.
-- Contradiction detection is conservative rather than semantic.
-- The CLI surface is ahead of some docs in a few places, so code should be
-  treated as the source of truth.
+- Retrieval is heuristic and Git-backed — cross-session search is an O(n)
+  file scan.
+- Contradiction detection is textual-pattern-based, not semantic.
+- The `index.sqlite` database is defined in the storage layout but not yet
+  populated or queried.
+- Several CLI commands (`why`, `show`, `search`, `context`, `status`,
+  `redact`, `repair`) are declared but not yet wired to handlers.
+- Git notes are best-effort — some Git configurations or hosting platforms
+  do not support notes.

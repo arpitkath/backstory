@@ -89,5 +89,87 @@ class CliParserTestCase(unittest.TestCase):
         self.assertIsNone(_parse_range_spec("src/app.py:a-b"))
 
 
+    # --- why parser ---
+
+    def test_why_parser_accepts_commit_spec(self):
+        parser = build_parser()
+        args = parser.parse_args(["why", "HEAD"])
+        self.assertEqual(args.commit_spec, "HEAD")
+
+    def test_why_parser_defaults_to_head(self):
+        parser = build_parser()
+        args = parser.parse_args(["why"])
+        self.assertEqual(args.commit_spec, "HEAD")
+
+    def test_why_parser_accepts_flags(self):
+        parser = build_parser()
+        args = parser.parse_args(["why", "abc123", "--raw"])
+        self.assertTrue(args.raw)
+        self.assertEqual(args.commit_spec, "abc123")
+
+    def test_why_parser_json_flag(self):
+        parser = build_parser()
+        args = parser.parse_args(["why", "HEAD", "--json"])
+        self.assertTrue(args.json)
+
+    # --- status parser ---
+
+    def test_status_parser(self):
+        parser = build_parser()
+        args = parser.parse_args(["status"])
+        self.assertEqual(args.command, "status")
+
+    # --- search parser ---
+
+    def test_search_parser_accepts_query(self):
+        parser = build_parser()
+        args = parser.parse_args(["search", "payment bug"])
+        self.assertEqual(args.query, "payment bug")
+        self.assertIsNone(args.file)
+        self.assertIsNone(args.branch)
+        self.assertEqual(args.max_results, 10)
+
+    def test_search_parser_accepts_flags(self):
+        parser = build_parser()
+        args = parser.parse_args([
+            "search", "bug",
+            "--file", "src/app.py",
+            "--branch", "main",
+            "--max-results", "20",
+        ])
+        self.assertEqual(args.file, "src/app.py")
+        self.assertEqual(args.branch, "main")
+        self.assertEqual(args.max_results, 20)
+
+    # --- redact parser ---
+
+    def test_redact_parser_default(self):
+        parser = build_parser()
+        args = parser.parse_args(["redact"])
+        self.assertIsNone(args.session_id)
+
+    def test_redact_parser_with_session(self):
+        parser = build_parser()
+        args = parser.parse_args(["redact", "sha256:abc123"])
+        self.assertEqual(args.session_id, "sha256:abc123")
+
+    # --- hooks parser ---
+
+    def test_hooks_enable_parser(self):
+        parser = build_parser()
+        args = parser.parse_args(["hooks", "enable"])
+        self.assertEqual(args.hooks_command, "enable")
+
+    def test_hooks_disable_parser(self):
+        parser = build_parser()
+        args = parser.parse_args(["hooks", "disable"])
+        self.assertEqual(args.hooks_command, "disable")
+
+    def test_hooks_status_parser(self):
+        parser = build_parser()
+        args = parser.parse_args(["hooks", "status"])
+        self.assertEqual(args.hooks_command, "status")
+
+
 if __name__ == "__main__":
     unittest.main()

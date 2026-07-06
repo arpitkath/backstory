@@ -4,11 +4,16 @@ import argparse
 import sys
 from pathlib import Path
 
+from backstory import redact as redact_module
+from backstory import search as search_module
+from backstory import why as why_module
 from backstory.attach import attach_pending_to_commit
 from backstory.contradiction import detect_potential_contradictions
-from backstory.dump import capture_session, save_pending_session
+from backstory.dump import capture_session, load_pending_session, save_pending_session
 from backstory.dump import discover_transcript_path
+from backstory.hooks import hooks_installed, install_hooks, uninstall_hooks
 from backstory.init import initialize_repo, print_init_summary
+from backstory.okf import parse_session_markdown, render_session_markdown, session_id_to_filename
 from backstory.retrieval import (
     commit_for_line,
     commits_for_file,
@@ -17,6 +22,7 @@ from backstory.retrieval import (
     format_retrieval_result,
     resolve_repo_root,
 )
+from backstory.storage import build_storage_paths, ensure_storage_layout
 from backstory.summarize import summarize_transcript
 from backstory.transcript import (
     ExtractedDecisions,
@@ -38,6 +44,7 @@ COMMANDS = [
     "status",
     "redact",
     "repair",
+    "hooks",
 ]
 
 RETRIEVAL_COMMANDS = [
@@ -70,9 +77,41 @@ def build_parser() -> argparse.ArgumentParser:
     attach_p.add_argument("commit_spec", nargs="?", default="HEAD", help="Commit hash or reference")
     attach_p.add_argument("--hook", default=None, help=argparse.SUPPRESS)  # internal
 
-    # --- basic commands (no extra args yet) ---
-    for name in ("why", "show", "search", "context", "status", "redact", "repair"):
-        subparsers.add_parser(name)
+    # --- why ---
+    why_p = subparsers.add_parser("why", help="Explain why a commit happened")
+    why_p.add_argument("commit_spec", nargs="?", default="HEAD", help="Commit hash or reference")
+    why_p.add_argument("--raw", action="store_true", help="Show raw session content")
+    why_p.add_argument("--json", action="store_true", help="Output as JSON")
+
+    # --- show ---
+    subparsers.add_parser("show", help="Show a raw or structured session")
+
+    # --- search ---
+    search_p = subparsers.add_parser("search", help="Search stored AI sessions")
+    search_p.add_argument("query", help="Search term")
+    search_p.add_argument("--file", default=None, help="Filter by file path (glob)")
+    search_p.add_argument("--branch", default=None, help="Filter by branch (glob)")
+    search_p.add_argument("--max-results", type=int, default=10, help="Maximum results (default 10)")
+
+    # --- context ---
+    subparsers.add_parser("context", help="Show prior AI context for a file")
+
+    # --- status ---
+    subparsers.add_parser("status", help="Show AI memory status")
+
+    # --- redact ---
+    redact_p = subparsers.add_parser("redact", help="Redact secrets from sessions")
+    redact_p.add_argument("session_id", nargs="?", default=None, help="Session ID to redact (default: pending)")
+
+    # --- repair ---
+    subparsers.add_parser("repair", help="Repair broken commit-session links")
+
+    # --- hooks ---
+    hooks_p = subparsers.add_parser("hooks", help="Manage Git hooks")
+    hooks_sub = hooks_p.add_subparsers(dest="hooks_command", required=True)
+    hooks_sub.add_parser("enable", help="Install backstory Git hooks")
+    hooks_sub.add_parser("disable", help="Remove backstory Git hooks")
+    hooks_sub.add_parser("status", help="Show hook installation status")
 
     # --- retrieval commands ---
     file_p = subparsers.add_parser("file", help="Show commits affecting a file")
@@ -110,12 +149,215 @@ def _get_handler(command: str):
         "init": _handle_init,
         "dump": _handle_dump,
         "attach": _handle_attach,
+        "why": _handle_why,
+        "status": _handle_status,
+        "search": _handle_search,
+        "redact": _handle_redact,
+        "hooks": _handle_hooks,
         "file": _handle_file,
         "line": _handle_line,
         "range": _handle_range,
         "code": _handle_range,
         "diff": _handle_diff,
     }.get(command)
+
+
+# ---------------------------------------------------------------------------
+# why handler
+# ---------------------------------------------------------------------------
+
+
+def _handle_why(args: argparse.Namespace) -> int:
+    repo = _resolve_repo()
+    if repo is None:
+        print("Not in a Git repository.", file=sys.stderr)
+        return 1
+
+    resolved = why_module.resolve_commit_spec(repo, args.commit_spec)
+    if resolved is None:
+        print(f"Commit not found: {args.commit_spec}", file=sys.stderr)
+        return 1
+
+    commit_hash, commit_message = resolved
+    session = why_module.load_session_for_commit(repo, commit_hash)
+
+    if session is None:
+        print(f"No AI session found for commit {commit_hash}.")
+        print("Sessions are linked to commits by running: backstory attach HEAD")
+        return 0
+
+    if args.json:
+        import json
+        print(json.dumps(session, indent=2, default=str))
+        return 0
+
+    output = why_module.format_why_output(session, commit_hash, commit_message)
+    print(output)
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# status handler
+# ---------------------------------------------------------------------------
+
+
+def _handle_status(args: argparse.Namespace) -> int:
+    repo = _resolve_repo()
+    if repo is None:
+        print("Not in a Git repository.", file=sys.stderr)
+        return 1
+
+    paths = build_storage_paths(repo)
+    storage_ok = paths.root.exists()
+
+    hook_status = hooks_installed(repo)
+    pre_commit = hook_status.get("pre-commit", False)
+    post_commit = hook_status.get("post-commit", False)
+
+    pending = load_pending_session(repo)
+
+    session_count = 0
+    if paths.sessions.exists():
+        session_count = len(list(paths.sessions.glob("sha256-*.md")))
+
+    # Get current branch
+    import subprocess
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=repo, capture_output=True, text=True, check=False,
+        )
+        branch = result.stdout.strip() if result.returncode == 0 else "unknown"
+    except OSError:
+        branch = "unknown"
+
+    print(f"AI Memory:     {'enabled' if storage_ok else 'not initialized'}")
+    pre_icon = "✓" if pre_commit else "✗"
+    post_icon = "✓" if post_commit else "✗"
+    print(f"Git hooks:     pre-commit={pre_icon}  post-commit={post_icon}")
+    print(f"Current branch: {branch}")
+    print(f"Pending session: {'yes' if pending else 'no'}")
+    print(f"Stored sessions: {session_count}")
+    if pending:
+        print(f"Session ID:    {pending.get('session_id', 'unknown')}")
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# search handler
+# ---------------------------------------------------------------------------
+
+
+def _handle_search(args: argparse.Namespace) -> int:
+    repo = _resolve_repo()
+    if repo is None:
+        print("Not in a Git repository.", file=sys.stderr)
+        return 1
+
+    matches = search_module.search_sessions(
+        repo,
+        args.query,
+        file_filter=args.file,
+        branch_filter=args.branch,
+        max_results=args.max_results,
+    )
+    print(search_module.format_search_results(matches, args.query))
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# redact handler
+# ---------------------------------------------------------------------------
+
+
+def _handle_redact(args: argparse.Namespace) -> int:
+    repo = _resolve_repo()
+    if repo is None:
+        print("Not in a Git repository.", file=sys.stderr)
+        return 1
+
+    paths = build_storage_paths(repo)
+
+    if args.session_id:
+        session_file = paths.sessions / session_id_to_filename(args.session_id)
+        if not session_file.exists():
+            print(f"Session not found: {args.session_id}", file=sys.stderr)
+            return 1
+        knowledge = parse_session_markdown(session_file.read_text(encoding="utf-8"))
+        session = knowledge.to_session_dict()
+    else:
+        session = load_pending_session(repo)
+        if session is None:
+            print("No pending session to redact.", file=sys.stderr)
+            return 1
+
+    redacted, findings = redact_module.redact_session(session)
+
+    if not findings:
+        print("No secrets detected.")
+        return 0
+
+    print(f"Found {len(findings)} potential secret(s):")
+    for f in findings:
+        conf = f"{f.confidence:.0%}" if f.confidence >= 0 else "unknown"
+        print(f"  - [{conf}] {f.pattern_name} in {f.context}")
+    print()
+
+    # Save redacted version
+    old_id = session.get("session_id", "unknown")
+    new_id = redacted.get("session_id", f"redacted-{old_id}")
+    if new_id != old_id:
+        redact_module.append_tombstone(repo, old_id, new_id)
+
+    paths_new = ensure_storage_layout(repo)
+    redacted_path = paths_new.sessions / session_id_to_filename(new_id)
+    redacted_path.write_text(
+        render_session_markdown(redacted), encoding="utf-8"
+    )
+    print(f"Redacted session saved: {redacted_path}")
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# hooks handler
+# ---------------------------------------------------------------------------
+
+
+def _handle_hooks(args: argparse.Namespace) -> int:
+    repo = _resolve_repo()
+    if repo is None:
+        print("Not in a Git repository.", file=sys.stderr)
+        return 1
+
+    if args.hooks_command == "enable":
+        written = install_hooks(repo)
+        if len(written) == 2:
+            print("✓ backstory Git hooks installed.")
+        else:
+            print(f"Installed {len(written)} hook(s) — expected 2.")
+        return 0
+
+    if args.hooks_command == "disable":
+        removed = uninstall_hooks(repo)
+        if removed > 0:
+            print(f"✓ Removed {removed} backstory Git hook(s).")
+        else:
+            print("No backstory Git hooks found.")
+        return 0
+
+    if args.hooks_command == "status":
+        status = hooks_installed(repo)
+        pre = "✓ installed" if status.get("pre-commit") else "✗ not installed"
+        post = "✓ installed" if status.get("post-commit") else "✗ not installed"
+        print(f"Pre-commit hook:  {pre}")
+        print(f"Post-commit hook: {post}")
+        return 0
+
+    print(f"Unknown hooks command: {args.hooks_command}", file=sys.stderr)
+    return 1
+
+
+# ---------------------------------------------------------------------------
 
 
 def _resolve_repo() -> Path | None:

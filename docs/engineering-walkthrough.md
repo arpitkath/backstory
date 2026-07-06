@@ -116,10 +116,12 @@ correlation works in either direction.
 
 ### 4. Retrieve — `backstory why HEAD`
 
-Retrieval uses Git's own history rather than a separate index. The key insight
-is that commits are the natural key: each stored session records the commit
-hash it was attached to, so looking up "why a commit" means reading its linked
-session file.
+`why_module.resolve_commit_spec()` resolves the user-supplied commit reference (e.g. HEAD, abc123, main~3) to a `(hash, message)` tuple via `git log -1 --format=%H%n%s`. Then `why_module.load_session_for_commit()` uses a two-strategy approach:
+
+1. **Git notes** — reads the note attached to the commit via `git notes show <hash>` and looks up the session ID stored inside.
+2. **Fallback scan** — lists every `.md` file in `.backstory/knowledge/sessions/` (skipping `latest.md`), parses the frontmatter, and returns the first session whose `commit_hash` matches.
+
+`why_module.format_why_output()` then renders the session as a human-readable block showing Commit, Message, Branch, AI Agent, Session ID, Task, Key decisions, Files changed, Risks, Follow-ups, and the raw session path. The `--json` flag dumps the raw session dict instead.
 
 ### 5. Cross-reference — `backstory diff`
 
@@ -144,6 +146,10 @@ session file.
 | `storage.py`    | Path definitions, storage layout creation |
 | `retrieval.py`  | Git-based code context retrieval (log, blame, diff) |
 | `contradiction.py` | Knowledge-driven contradiction detection |
+| `why.py`        | Commit-to-session resolution, human-readable why output formatting |
+| `search.py`     | Text-based full-session search with file/branch filters and relevance scoring |
+| `redact.py`     | Secret pattern scanning, session redaction, tombstone management |
+| `git_notes.py`  | Git notes read/write/remove via backstory-specific ref (refs/notes/backstory) |
 | `transcript.py` | Transcript import, normalisation, agent-name detection |
 | `summarize.py`  | Agent-driven transcript summarisation |
 | `config.py`     | Configuration defaults and loading |
@@ -378,13 +384,14 @@ Commands and their handler mapping in `_dispatch()`:
 | `range`    | `_handle_range` | ✅ |
 | `code`     | `_handle_range` | ✅ (alias for range) |
 | `diff`     | `_handle_diff`  | ✅ |
-| `why`      | —               | 🔲 not yet wired |
+| `why`      | `_handle_why`   | ✅ |
 | `show`     | —               | 🔲 not yet wired |
-| `search`   | —               | 🔲 not yet wired |
+| `search`   | `_handle_search`| ✅ |
 | `context`  | —               | 🔲 not yet wired |
-| `status`   | —               | 🔲 not yet wired |
-| `redact`   | —               | 🔲 not yet wired |
+| `status`   | `_handle_status`| ✅ |
+| `redact`   | `_handle_redact`| ✅ |
 | `repair`   | —               | 🔲 not yet wired |
+| `hooks`    | `_handle_hooks` | ✅ enable/disable/status |
 
 ---
 
@@ -525,9 +532,9 @@ full-text search index. The intended schema would support:
 
 ### How Retrieval Works for Each Command
 
-**`why HEAD`** (not yet wired in dispatch, defined in CLI):
-Reads the most recent commit hash from `git rev-parse HEAD`, finds the
-attached session by scanning frontmatter for `commit_hash`, and renders
+**`why HEAD`**:
+Resolves the commit spec (default HEAD) via `git log -1 --format=%H%n%s`,
+finds the attached session via Git notes or frontmatter scan, and renders
 the session's decisions, risks, and why.
 
 **`file <path>`**:
@@ -585,8 +592,10 @@ When `index.sqlite` is implemented, the architecture will look like:
 
 Benefits:
 - O(1) session lookup by commit hash instead of O(n) file scan.
-- Full-text search across all session text (`backstory search`).
-- Boolean queries: `backstory search "auth AND decisions:not"`.
+- Full-text search across all session text (`backstory search`) — currently
+  implemented as an O(n) scan using `search.py`, which scores results by
+  field relevance (task title +10, decisions +8, description +6, etc.).
+- Boolean queries: `backstory search "auth AND decisions:not"` (future with FTS5).
 - No filesystem dependency for retrieval.
 
 The index would be built incrementally during `attach`: after writing the
@@ -603,7 +612,7 @@ session files.
 - Contradiction detection is textual-pattern-based, not semantic.
 - The `index.sqlite` database is defined in the storage layout but not yet
   populated or queried.
-- Several CLI commands (`why`, `show`, `search`, `context`, `status`,
-  `redact`, `repair`) are declared but not yet wired to handlers.
+- Several CLI commands (`show`, `context`, `repair`) are declared but not
+  yet wired to handlers.
 - Git notes are best-effort — some Git configurations or hosting platforms
   do not support notes.

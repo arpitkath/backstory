@@ -194,6 +194,7 @@ backstory dump --agent claude --transcript ./transcript.md
 | `backstory diff` | Explain the reasoning behind the current diff |
 | `backstory status` | Show Backstory state in this repo |
 | `backstory redact` | Re-scan and redact sensitive data from stored sessions |
+| `backstory hooks <enable\|disable\|status>` | Manage Git hook installation |
 
 ## Redaction
 

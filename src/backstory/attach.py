@@ -4,6 +4,7 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+from backstory import git_notes
 from backstory.dump import clear_pending_session, load_pending_session
 from backstory.okf import parse_session_markdown, render_session_markdown, session_id_to_filename
 from backstory.storage import build_storage_paths, ensure_storage_layout
@@ -37,7 +38,7 @@ def attach_pending_to_commit(repo_root: Path, commit_hash: str) -> dict[str, Any
     stable_path.write_text(render_session_markdown(session), encoding="utf-8")
 
     # --- Write a Git note ---
-    _write_git_note(repo_root, commit_hash, session)
+    git_notes.write_git_note(repo_root, commit_hash, session)
 
     # --- Clear pending ---
     clear_pending_session(repo_root)
@@ -60,30 +61,6 @@ def _get_commit_message(repo_root: Path, commit_hash: str) -> str | None:
         return None
     except OSError:
         return None
-
-
-def _write_git_note(repo_root: Path, commit_hash: str, session: dict) -> None:
-    """Attach a Git note with session metadata to the commit."""
-    import json
-
-    note = json.dumps(
-        {
-            "ai_session": session.get("session_id"),
-            "agent": session.get("agent", {}).get("name"),
-            "created_at": session.get("created_at"),
-        },
-        indent=2,
-    )
-    try:
-        subprocess.run(
-            ["git", "notes", "add", "-f", "-m", note, commit_hash],
-            cwd=repo_root,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-    except OSError:
-        pass  # Git notes are best-effort
 
 
 def _render_summary(session: dict, commit_hash: str, commit_msg: str | None) -> str:

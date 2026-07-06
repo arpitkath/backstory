@@ -5,38 +5,15 @@
 [![Knowledge Format](https://img.shields.io/badge/knowledge%20format-OKF-orange)]()
 [![Local-first](https://img.shields.io/badge/local--first-no--cloud-purple)]()
 
-AI writes the code. Git saves the diff. **Backstory saves the reasoning.**
+**Git shows what changed. Backstory shows why.**
+
+![Backstory terminal walkthrough](docs/assets/how-it-works-terminal.gif)
 
 Ever opened an AI-generated commit and wondered:
 
 - Why was this approach chosen?
 - What did the agent try before this?
 - What assumptions are hidden in this code?
-
----
-
-```text
-$ git show HEAD --stat
- 8 files changed, 42 insertions(+), 12 deletions(-)
-
-$ backstory why HEAD
-Commit: 8f21c9a
-Message: Fix subscription renewal handling
-
-Why this changed:
-  The webhook handler was not updating the next billing date after
-  successful recurring charges. Failed payments were not separated
-  from cancellations.
-
-Key decisions:
-  - subscription.charged updates next_due_on
-  - payment.failed marks subscription as pending, not cancelled
-  - webhook handling must be idempotent
-
-Risks:
-  - Idempotency depends on storing Razorpay event IDs
-  - Existing subscriptions need a next_due_on backfill
-```
 
 ## What is Backstory?
 

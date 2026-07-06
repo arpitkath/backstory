@@ -69,14 +69,14 @@ That turns the tool from an archive into a guardrail.
 
 ## How It Works
 
-![Backstory flow diagram](docs/assets/how-it-works-flow.gif)
+![Backstory flow diagram](https://raw.githubusercontent.com/arpitkath/backstory/master/docs/assets/how-it-works-flow.gif)
 
 This shows the capture path: tool-native session capture, OKF storage, commit
 linking, retrieval, and contradiction warnings.
 
 ## Terminal Walkthrough
 
-![Backstory terminal walkthrough](docs/assets/how-it-works-terminal.gif)
+![Backstory terminal walkthrough](https://raw.githubusercontent.com/arpitkath/backstory/master/docs/assets/how-it-works-terminal.gif)
 
 This shows the same flow in CLI form: initialize, ingest, link, and retrieve
 the stored decision trail.

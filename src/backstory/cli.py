@@ -4,6 +4,9 @@ import argparse
 import sys
 from pathlib import Path
 
+from backstory.attach import attach_pending_to_commit
+from backstory.dump import capture_session, save_pending_session
+from backstory.init import initialize_repo, print_init_summary
 from backstory.retrieval import (
     commit_for_line,
     commits_for_file,
@@ -12,6 +15,7 @@ from backstory.retrieval import (
     format_retrieval_result,
     resolve_repo_root,
 )
+from backstory.transcript import format_transcript_summary, import_transcript
 
 COMMANDS = [
     "init",
@@ -39,23 +43,41 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="backstory")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    for command in COMMANDS:
-        subparsers.add_parser(command)
+    # --- init ---
+    init_p = subparsers.add_parser("init", help="Initialize backstory in this repo")
+    init_p.add_argument("--no-hooks", action="store_true", help="Skip Git hook installation")
+    init_p.add_argument("--force", action="store_true", help="Overwrite existing config and hooks")
 
-    # Add positional args for retrieval commands
-    file_parser = subparsers.add_parser("file")
-    file_parser.add_argument("path", help="File path to query")
+    # --- dump ---
+    dump_p = subparsers.add_parser("dump", help="Capture an AI session")
+    dump_p.add_argument("--agent", default=None, help="Agent name (claude, codex)")
+    dump_p.add_argument("--transcript", type=Path, default=None, help="Path to transcript JSON file")
+    dump_p.add_argument("--task", default=None, help="Short task description")
+    dump_p.add_argument("--hook", default=None, help=argparse.SUPPRESS)  # internal: called from hook
 
-    line_parser = subparsers.add_parser("line")
-    line_parser.add_argument("spec", help="File and line (path/to/file.py:42)")
+    # --- attach ---
+    attach_p = subparsers.add_parser("attach", help="Attach pending session to a commit")
+    attach_p.add_argument("commit_spec", nargs="?", default="HEAD", help="Commit hash or reference")
+    attach_p.add_argument("--hook", default=None, help=argparse.SUPPRESS)  # internal
 
-    range_parser = subparsers.add_parser("range")
-    range_parser.add_argument("spec", help="File and range (path/to/file.py:10-20)")
+    # --- basic commands (no extra args yet) ---
+    for name in ("why", "show", "search", "context", "status", "redact", "repair"):
+        subparsers.add_parser(name)
 
-    code_parser = subparsers.add_parser("code")
-    code_parser.add_argument("spec", help="File and range (path/to/file.py:10-20)")
+    # --- retrieval commands ---
+    file_p = subparsers.add_parser("file", help="Show commits affecting a file")
+    file_p.add_argument("path", help="File path to query")
 
-    subparsers.add_parser("diff")
+    line_p = subparsers.add_parser("line", help="Show what changed a specific line")
+    line_p.add_argument("spec", help="path/to/file.py:42")
+
+    range_p = subparsers.add_parser("range", help="Show commits affecting a line range")
+    range_p.add_argument("spec", help="path/to/file.py:10-20")
+
+    code_p = subparsers.add_parser("code", help="Alias for range")
+    code_p.add_argument("spec", help="path/to/file.py:10-20")
+
+    subparsers.add_parser("diff", help="Show prior context for uncommitted changes")
 
     return parser
 
@@ -74,18 +96,112 @@ def _dispatch(args: argparse.Namespace) -> int:
 
 
 def _get_handler(command: str):
-    handlers = {
+    return {
+        "init": _handle_init,
+        "dump": _handle_dump,
+        "attach": _handle_attach,
         "file": _handle_file,
         "line": _handle_line,
         "range": _handle_range,
         "code": _handle_range,
         "diff": _handle_diff,
-    }
-    return handlers.get(command)
+    }.get(command)
 
 
 def _resolve_repo() -> Path | None:
     return resolve_repo_root(Path.cwd())
+
+
+# ---------------------------------------------------------------------------
+# init handler
+# ---------------------------------------------------------------------------
+
+
+def _handle_init(args: argparse.Namespace) -> int:
+    repo = _resolve_repo()
+    if repo is None:
+        print("Not in a Git repository.", file=sys.stderr)
+        print("Run this command inside a Git repository.", file=sys.stderr)
+        return 1
+
+    result = initialize_repo(
+        repo_root=repo,
+        install_git_hooks=not args.no_hooks,
+        force=args.force,
+    )
+    print_init_summary(repo, result)
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# dump handler
+# ---------------------------------------------------------------------------
+
+
+def _handle_dump(args: argparse.Namespace) -> int:
+    repo = _resolve_repo()
+    if repo is None:
+        print("Not in a Git repository.", file=sys.stderr)
+        return 1
+
+    # Import transcript if provided
+    transcript = None
+    if args.transcript:
+        transcript = import_transcript(args.transcript)
+        if transcript is None:
+            print(f"Warning: could not read transcript from {args.transcript}", file=sys.stderr)
+        else:
+            print(format_transcript_summary(transcript))
+            print()
+
+    # Resolve agent name
+    agent = args.agent
+    if transcript and not agent:
+        agent = transcript.agent_name
+
+    # Capture session
+    session = capture_session(
+        repo_root=repo,
+        task=args.task,
+        agent=agent,
+        transcript=transcript,
+    )
+
+    path = save_pending_session(repo, session)
+    print(f"Session saved: {session['session_id']}")
+    print(f"Pending:       {path}")
+
+    if args.hook:
+        # Called from a Git hook — be silent beyond the essentials
+        pass
+
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# attach handler
+# ---------------------------------------------------------------------------
+
+
+def _handle_attach(args: argparse.Namespace) -> int:
+    repo = _resolve_repo()
+    if repo is None:
+        print("Not in a Git repository.", file=sys.stderr)
+        return 1
+
+    result = attach_pending_to_commit(repo, args.commit_spec)
+    if result is None:
+        if not args.hook:
+            print("No pending session to attach.")
+        return 0
+
+    print(f"Attached session {result['session_id']} to commit {args.commit_spec}")
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# file handler
+# ---------------------------------------------------------------------------
 
 
 def _handle_file(args: argparse.Namespace) -> int:
@@ -102,6 +218,11 @@ def _handle_file(args: argparse.Namespace) -> int:
     )
     print(output)
     return 0
+
+
+# ---------------------------------------------------------------------------
+# Parse helpers for line/range specs
+# ---------------------------------------------------------------------------
 
 
 def _parse_line_spec(spec: str) -> tuple[str, int] | None:
@@ -127,6 +248,11 @@ def _parse_range_spec(spec: str) -> tuple[str, int, int] | None:
         return path_part, int(start_str), int(end_str)
     except (ValueError, IndexError):
         return None
+
+
+# ---------------------------------------------------------------------------
+# line / range / diff handlers
+# ---------------------------------------------------------------------------
 
 
 def _handle_line(args: argparse.Namespace) -> int:

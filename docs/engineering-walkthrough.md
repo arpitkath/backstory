@@ -1,8 +1,9 @@
 # Backstory Engineering Walkthrough
 
-Backstory is a local-first Git-backed memory layer for AI-assisted coding. It
-captures session context, stores the durable record as OKF markdown, attaches
-that memory to commits, and later retrieves the reasoning behind code changes.
+Backstory is a local-first memory layer for AI-assisted coding. It captures
+session context from tool-native hooks or exporters, stores the durable record
+as OKF markdown, attaches that memory to commits, and later retrieves the
+reasoning behind code changes.
 
 ## What It Does
 
@@ -53,17 +54,18 @@ Run:
 backstory init
 ```
 
-This creates the storage layout and installs Git hooks.
+This creates the storage layout and prepares the local index and OKF bundle.
 
 ### 2. Capture a session
 
-Run manually:
+Capture is expected to happen inside the AI tool itself through a hook,
+callback, or transcript export.
 
 ```bash
 backstory dump
 ```
 
-Or point it at a transcript:
+Or point it at a transcript produced by the tool:
 
 ```bash
 backstory dump --agent claude --transcript ./transcript.md
@@ -74,10 +76,9 @@ variables or common repo-local transcript paths.
 
 ### 3. Commit
 
-The Git hooks handle the handoff:
-
-- pre-commit captures the pending state
-- post-commit attaches the session to the final commit hash
+Git still records the final code change, but it is not the primary capture
+surface. Backstory uses the commit as the linkage point for the already
+captured session.
 
 ### 4. Retrieve context
 
@@ -101,18 +102,17 @@ Backstory is file-based, not SDK-based.
 
 Integration options:
 
-- Export a transcript file and pass it to `backstory dump --transcript ...`
-- Set one of the supported transcript path environment variables and let the
-  CLI discover it
-- Use the Git hooks so the session is attached automatically around commits
+- Export a transcript file and hand it to `backstory dump --transcript ...`
+- Let the tool-native hook or callback invoke Backstory automatically
+- Use the commit attachment step to bind the session to Git history
 
 The tool does not require a special extension to be useful. It works with any
 AI tool that can emit a local transcript or leave a diff in the repository.
 
 ## What The Commands Mean
 
-- `init`: create local storage and hooks
-- `dump`: capture the current AI session into OKF markdown
+- `init`: create local storage and indices
+- `dump`: ingest the current AI session into OKF markdown
 - `attach`: link a saved session to a commit
 - `why`: explain a commit
 - `show`: inspect a stored session
@@ -160,4 +160,3 @@ PYTHONPATH=src /tmp/backstory-venv/bin/python -m pytest -q
 - Contradiction detection is conservative rather than semantic.
 - The CLI surface is ahead of some docs in a few places, so code should be
   treated as the source of truth.
-

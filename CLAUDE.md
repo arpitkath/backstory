@@ -6,7 +6,8 @@ Repository instructions for Claude-based work in this repo.
 
 Backstory is a local-first AI memory layer for Git repositories. It stores
 session history as OKF markdown under `.backstory/knowledge/` and links that
-memory to commits.
+memory to commits. Capture should come from tool-native hooks, callbacks, or
+transcript exporters, not from Git hooks.
 
 ## Current State
 
@@ -14,7 +15,7 @@ memory to commits.
 - Pending sessions live at `.backstory/knowledge/sessions/latest.md`.
 - Attached sessions live as stable `.md` files in the same directory.
 - `backstory diff` can warn about likely contradictions with previous sessions.
-- `backstory dump` can auto-discover transcripts.
+- `backstory dump` is the ingestion step used by tool integrations.
 
 ## Important Commands
 
@@ -28,7 +29,6 @@ Useful CLI commands:
 
 ```bash
 backstory init
-backstory dump
 backstory attach HEAD
 backstory why HEAD
 backstory file <path>
@@ -44,6 +44,7 @@ backstory status
 - Prefer small, scoped changes.
 - Keep OKF as the persisted session format.
 - Do not reintroduce durable JSON session storage.
+- Prefer tool-native capture paths over Git hooks.
 - Update tests when storage, parsing, or retrieval behavior changes.
 - Treat the codebase as the source of truth when docs and implementation differ.
 
@@ -61,8 +62,8 @@ backstory status
 
 ## Notes For Future Work
 
-- Transcript ingestion is file-based.
+- Transcript ingestion is file-based and should be driven by the tool when
+  possible.
 - Retrieval is code-aware and Git-backed.
 - Privacy and redaction are local-first concerns.
 - If you change command behavior, update the docs in the same change.
-

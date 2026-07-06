@@ -22,13 +22,11 @@ appear to reverse earlier decisions can be surfaced quickly.
 
 ```bash
 backstory init
-backstory dump
-git add .
-git commit -m "..."
 backstory why HEAD
 ```
 
-If your AI tool writes a local transcript file, you can point Backstory at it:
+Capture is expected to happen inside the AI tool through its own hook or
+lifecycle callback. Backstory then ingests the session internally:
 
 ```bash
 backstory dump --agent claude --transcript ./transcript.md
@@ -70,9 +68,11 @@ Backstory stores session memory in OKF markdown files:
 
 ## Integration
 
-Backstory works with Claude, Codex, Cursor, and other AI tools as long as they
-can leave a local transcript file or a commit-diff trail. It does not require a
-hosted service or extension to be useful.
+Backstory is designed for tool-native integration with Claude, Codex, Cursor,
+and similar AI tools. The preferred path is a tool-specific hook, callback, or
+transcript exporter that hands the session to Backstory automatically. `dump`
+is the ingestion step, not the primary user workflow. Git remains the linkage
+layer for commits, not the capture layer.
 
 ## Documentation
 

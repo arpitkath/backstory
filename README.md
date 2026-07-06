@@ -6,7 +6,8 @@ conversation have both moved on in a fast-changing environment. It captures
 session context, stores the durable record as OKF (Open Knowledge Format;
 [Google Cloud announcement](https://cloud.google.com/blog/products/data-analytics))
 markdown, and links that memory to Git commits so the reasoning stays
-searchable.
+searchable. It also supports contradiction detection so later changes that
+appear to reverse earlier decisions can be surfaced quickly.
 
 ## What It Does
 

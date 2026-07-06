@@ -4,8 +4,9 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "backstory-cli"
-version = "0.1.0"
+version = "0.1.1"
 description = "Every AI-assisted commit has a backstory. Never lose it again."
+readme = { file = "README.md", content-type = "text/markdown" }
 requires-python = ">=3.11"
 
 [project.scripts]

@@ -23,9 +23,11 @@ AI_TRANSCRIPT_ENV_VARS = {
 }
 
 # Known AI tool settings file paths (relative to repo root)
-AI_SETTINGS_FILES = {
-    "claude": ".claude/settings.json",
-    "cursor": ".cursor/settings.json",
+# Value is (path, format) where format is "json" or "toml".
+AI_SETTINGS_FILES: dict[str, tuple[str, str]] = {
+    "claude": (".claude/settings.json", "json"),
+    "cursor": (".cursor/settings.json", "json"),
+    "codex": (".codex/config.toml", "toml"),
 }
 
 
@@ -39,24 +41,30 @@ def check_ai_settings(repo_root: Path) -> dict[str, bool | str]:
     """
     result: dict[str, bool | str] = {}
 
-    for tool, rel_path in AI_SETTINGS_FILES.items():
+    for tool, (rel_path, fmt) in AI_SETTINGS_FILES.items():
         path = repo_root / rel_path
         if not path.exists():
             result[tool] = "missing"
             continue
 
-        try:
-            content = json.loads(path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
-            result[tool] = "misconfigured"
-            continue
-
         env_var = AI_TRANSCRIPT_ENV_VARS.get(tool)
-        env_config = content.get("env", {}) if isinstance(content, dict) else {}
-        if isinstance(env_config, dict) and env_config.get(env_var) == ".backstory/transcripts/latest.json":
+
+        if fmt == "json":
+            try:
+                content = json.loads(path.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                result[tool] = "misconfigured"
+                continue
+            env_config = content.get("env", {}) if isinstance(content, dict) else {}
+            if isinstance(env_config, dict) and env_config.get(env_var) == ".backstory/transcripts/latest.json":
+                result[tool] = True
+            else:
+                result[tool] = "misconfigured"
+
+        elif fmt == "toml":
+            # TOML configs — just note it exists; transcript path is typically
+            # set via an env var rather than tool config for these tools.
             result[tool] = True
-        else:
-            result[tool] = "misconfigured"
 
     return result
 

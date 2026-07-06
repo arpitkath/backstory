@@ -17,14 +17,20 @@ Ever opened an AI-generated commit and wondered:
 
 Backstory is a local-first AI memory layer for Git repositories. It captures session context from AI coding tools, extracts the durable reasoning (decisions, risks, alternatives), stores it as Google's OKF markdown, and links it to Git commits so you can retrieve the *why* later.
 
-![Backstory terminal walkthrough](docs/assets/how-it-works-terminal.gif)
-
 > **Why not just write good commit messages?** Commit messages describe what changed. They rarely capture the rejected alternatives, the risks you accepted, or the reasoning trail across a multi-step AI session. Backstory fills that gap.
+
+![Backstory terminal walkthrough](docs/assets/how-it-works-terminal.gif)
 
 ## Quick Install
 
 ```bash
-pipx install git+https://github.com/arpitkath/backstory.git
+pipx install backstory-cli
+```
+
+Or with pip:
+
+```bash
+pip install backstory-cli
 ```
 
 Then initialize in your repo:

@@ -221,7 +221,7 @@ The tool should:
 
 * Inspect current changed files
 * Find previous commits touching those files
-* Retrieve attached AI memory
+* Retrieve attached AI memory (extracted decisions only)
 * Surface relevant warnings, decisions, and constraints
 
 Example output:

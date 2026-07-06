@@ -54,16 +54,11 @@ Git shows the code diff.
 
 The tool should help developers preserve:
 
-* Raw AI conversation
-* Developer prompts
-* Agent responses
+* Task description and goal
 * Files changed
-* Commands run
-* Errors encountered
-* Decisions made
-* Constraints followed
-* Final summary
+* Key decisions made
 * Risks and follow-ups
+* Alternatives considered
 * Commit linkage
 
 ---
@@ -192,12 +187,16 @@ The tool captures:
 
 The session is then:
 
-* Redacted for secrets
+* Sent to the AI agent for summarization (only structured decisions extracted)
 * Normalized into JSON
 * Compressed
-* Stored locally
+* Stored locally — no raw conversation text is persisted
 * Indexed for search
 * Given a content hash
+
+> **Privacy:** Raw transcripts are never stored. The agent reads its own
+> conversation and returns only structured facts: task, decisions, risks,
+> follow-ups, and file paths. Everything else is discarded.
 
 ---
 
@@ -563,7 +562,13 @@ Configurable behavior:
 
 ### Session Object
 
-Each session should be stored as compressed JSON.
+Each session stores only factual reasoning — never raw conversations.
+
+The session is built from structured decisions extracted by the AI agent
+that made the changes (Claude Code, Codex, etc.). No transcript text is
+persisted.
+
+Example:
 
 Example:
 
@@ -588,18 +593,7 @@ Example:
     "title": "Fix subscription renewal handling",
     "user_prompt": "Handle Razorpay subscription charged, failed, halted and cancelled events."
   },
-  "conversation": [
-    {
-      "role": "user",
-      "content": "Fix subscription renewal issue..."
-    },
-    {
-      "role": "assistant",
-      "content": "I will inspect the webhook handler..."
-    }
-  ],
   "files": {
-    "read": [],
     "changed": [],
     "created": [],
     "deleted": []
@@ -616,11 +610,18 @@ Example:
     "summary": ""
   },
   "reasoning_summary": {
-    "why": "",
-    "decisions": [],
+    "why": "The webhook handler was not updating the next billing date after successful recurring charges.",
+    "decisions": [
+      "subscription.charged updates next_due_on",
+      "payment.failed marks subscription as pending, not cancelled"
+    ],
     "alternatives": [],
-    "risks": [],
-    "followups": []
+    "risks": [
+      "Existing users without next_due_on need backfill"
+    ],
+    "followups": [
+      "Add monitoring for webhook failures"
+    ]
   },
   "commit": {
     "hash": "8f21c9a",

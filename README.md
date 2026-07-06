@@ -1,7 +1,7 @@
 # Backstory
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/)
-[![OKF](https://img.shields.io/badge/knowledge%20format-OKF-orange)](https://cloud.google.com/blog/products/data-analytics)
+[![Google's OKF](https://img.shields.io/badge/knowledge%20format-OKF-orange)](https://cloud.google.com/blog/products/data-analytics)
 
 **Git shows what changed. Backstory shows why.**
 
@@ -18,7 +18,7 @@ markdown, and links it to Git commits so you can retrieve the *why* later.
 
 - Local-first by default — everything stays in your repo
 - Recovers *why* a decision was made, after the codebase has moved on
-- Stores durable session memory as OKF markdown — human-readable,
+- Stores durable session memory as Google's OKF markdown — human-readable,
   Git-friendly, and agent-friendly
 - Links memory to Git commits so the reasoning stays searchable
 - Detects contradictions when later changes reverse earlier decisions
@@ -223,7 +223,7 @@ backstory dump --agent claude --transcript ./transcript.md
 | Command | What it does |
 |---|---|
 | `backstory init` | Set up Backstory in the current repo |
-| `backstory dump` | Ingest an AI session into OKF markdown |
+| `backstory dump` | Ingest an AI session into Google's OKF markdown |
 | `backstory attach HEAD` | Link a session to a commit |
 | `backstory why HEAD` | Explain why a commit happened |
 | `backstory show <session>` | View a stored session |
@@ -274,7 +274,7 @@ persists.
     tombstones.log
 ```
 
-Session memory is stored as OKF-style markdown so it stays human-readable,
+Session memory is stored as Google's OKF-style markdown so it stays human-readable,
 Git-friendly, and agent-friendly.
 
 ## Privacy
@@ -297,8 +297,12 @@ The preferred path is a tool-specific hook, callback, or transcript exporter
 that hands the session to Backstory automatically. `dump` exists as the
 ingestion step, not the primary workflow.
 
+See the [integration guide](docs/integration.md) for step-by-step setup with
+each tool.
+
 ## Documentation
 
+- [Integration guide](docs/integration.md) — Set up Backstory with Claude Code, Codex, Cursor, etc.
 - [Engineering walkthrough](docs/engineering-walkthrough.md)
 - [Product spec](docs/prd.md)
 - [Retrieval model](docs/retrieval.md)

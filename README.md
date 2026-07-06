@@ -55,6 +55,56 @@ Risks:
 
 That is the useful part: not just what changed, but why it changed.
 
+## What Gets Stored
+
+Here is what that same session looks like on disk — only the extracted
+reasoning, no raw conversation:
+
+```markdown
+---
+type: Backstory Session
+title: Fix subscription renewal handling
+description: The webhook handler was not updating the next billing date after successful recurring charges.
+resource: git:8f21c9a
+tags: [backstory, ai-session]
+timestamp: 2026-07-06T12:00:00+00:00
+session_id: sha256:a1b2c3d4e5f6...
+agent: claude-code
+model: claude-sonnet-5
+source: manual
+branch: main
+head: 8f21c9a...
+commit_hash: 8f21c9a...
+commit_message: Fix subscription renewal handling
+files_changed:
+  - app/api/webhooks/razorpay/route.ts
+  - lib/subscription.ts
+---
+
+# Task
+
+Fix subscription renewal handling
+
+# Decisions
+
+- subscription.charged updates next_due_on
+- payment.failed marks subscription as pending, not cancelled
+- webhook handling must be idempotent
+
+# Risks
+
+- Idempotency depends on storing Razorpay event IDs
+- Existing subscriptions need a next_due_on backfill
+
+# Follow-ups
+
+- Add migration script for existing subscriptions
+```
+
+This file lives at `.backstory/knowledge/sessions/sha256-a1b2c3d4....md`.
+It is human-readable, Git-friendly, and stores only the durable
+decisions — not the full chat transcript.
+
 ## Contradiction Detection
 
 Backstory also watches for new changes that appear to reverse earlier recorded

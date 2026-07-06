@@ -8,6 +8,9 @@
 Backstory preserves the decision-making process behind AI-assisted code
 changes, not just the diff or a pile of comments.
 
+- Local-first by default, with everything stored in the repo unless you choose
+  otherwise
+
 - Recovers why a decision was made later, after the codebase has moved on
 - Stores durable session memory as OKF (Open Knowledge Format) markdown
 - Links that memory to Git commits so the reasoning stays searchable
@@ -67,7 +70,8 @@ That turns the tool from an archive into a guardrail.
 ## What Backstory Does
 
 - Captures AI coding session context
-- Extracts durable decisions, risks, follow-ups, and changed files
+- Extracts durable decisions, risks, follow-ups, and changed files instead of
+  storing full chats or raw context
 - Stores memory as OKF-style markdown under `.backstory/knowledge/`
 - Links session memory to Git commits
 - Retrieves context by commit, file, line, range, or current diff
@@ -167,4 +171,3 @@ ingestion step, not the primary workflow.
 - [Engineering walkthrough](docs/engineering-walkthrough.md)
 - [Product spec](docs/prd.md)
 - [Retrieval model](docs/retrieval.md)
-

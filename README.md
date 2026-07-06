@@ -25,7 +25,8 @@ markdown, and links it to Git commits so you can retrieve the *why* later.
 - Extracts decisions, risks, and follow-ups — not raw chat logs
 
 Backstory is not an AI coding agent. It is the memory layer around
-AI-assisted coding.
+AI-assisted coding — useful whether you're building alone or shipping
+across enterprise teams.
 
 ## Example
 

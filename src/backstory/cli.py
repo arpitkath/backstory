@@ -198,6 +198,28 @@ def _handle_why(args: argparse.Namespace) -> int:
 
 
 # ---------------------------------------------------------------------------
+# helpers
+# ---------------------------------------------------------------------------
+
+
+def _is_backstory_gitignored(repo_root: Path) -> bool:
+    """Check if .backstory/ is listed in the repo's .gitignore."""
+    gitignore = repo_root / ".gitignore"
+    if not gitignore.exists():
+        return False
+    try:
+        for line in gitignore.read_text(encoding="utf-8").splitlines():
+            stripped = line.strip()
+            if stripped in (".backstory", ".backstory/", ".backstory/**"):
+                return True
+            if stripped == "#":
+                break  # section break — stop scanning
+        return False
+    except OSError:
+        return False
+
+
+# ---------------------------------------------------------------------------
 # status handler
 # ---------------------------------------------------------------------------
 
@@ -236,6 +258,10 @@ def _handle_status(args: argparse.Namespace) -> int:
     pre_icon = "✓" if pre_commit else "✗"
     post_icon = "✓" if post_commit else "✗"
     print(f"Git hooks:     pre-commit={pre_icon}  post-commit={post_icon}")
+
+    # Warn if .backstory is gitignored
+    if _is_backstory_gitignored(repo):
+        print("  ⚠  .backstory/ is in .gitignore — session data won't be tracked in version control")
 
     ai_settings = check_ai_settings(repo)
     for tool in sorted(ai_settings):

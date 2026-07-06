@@ -17,15 +17,26 @@ transcript exporters, not from Git hooks.
 - `backstory diff` can warn about likely contradictions with previous sessions.
 - `backstory dump` is the ingestion step used by tool integrations.
 
-## Important Commands
+## Development Venv (pip-integrated)
 
-Use the local venv for verification:
+The project is installed in editable mode via pip at `venv/` (symlinked to
+`/tmp/backstory-venv/`). Use this venv for all Python commands so changes to
+source are reflected immediately.
 
 ```bash
-PYTHONPATH=src /tmp/backstory-venv/bin/python -m pytest -q
+# Run the backstory CLI from local source
+venv/bin/backstory <command>
+
+# Install additional dev dependencies
+venv/bin/pip install <package>
+
+# Run tests
+PYTHONPATH=src venv/bin/python -m pytest -q
 ```
 
-Useful CLI commands:
+## Important Commands
+
+Useful CLI commands (prefix with `venv/bin/backstory`):
 
 ```bash
 backstory init

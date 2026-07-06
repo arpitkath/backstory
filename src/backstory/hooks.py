@@ -7,7 +7,13 @@ from pathlib import Path
 
 PRE_COMMIT_CONTENT = r"""#!/bin/sh
 # backstory pre-commit hook — captures AI session context before committing
-BACKSTORY="$(which backstory 2>/dev/null || echo backstory)"
+# Prefer project-local venv, then fall back to PATH
+HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$HOOK_DIR/../.." && pwd)"
+BACKSTORY="$REPO_ROOT/venv/bin/backstory"
+if [ ! -x "$BACKSTORY" ]; then
+    BACKSTORY="$(which backstory 2>/dev/null || echo backstory)"
+fi
 if command -v "$BACKSTORY" >/dev/null 2>&1; then
     "$BACKSTORY" dump --hook pre-commit 2>/dev/null || true
 fi
@@ -15,7 +21,13 @@ fi
 
 POST_COMMIT_CONTENT = r"""#!/bin/sh
 # backstory post-commit hook — attaches AI session to the new commit
-BACKSTORY="$(which backstory 2>/dev/null || echo backstory)"
+# Prefer project-local venv, then fall back to PATH
+HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$HOOK_DIR/../.." && pwd)"
+BACKSTORY="$REPO_ROOT/venv/bin/backstory"
+if [ ! -x "$BACKSTORY" ]; then
+    BACKSTORY="$(which backstory 2>/dev/null || echo backstory)"
+fi
 if command -v "$BACKSTORY" >/dev/null 2>&1; then
     "$BACKSTORY" attach HEAD --hook post-commit 2>/dev/null || true
 fi

@@ -1,0 +1,5 @@
+{
+  "env": {
+    "CLAUDE_TRANSCRIPT_PATH": ".backstory/transcripts/latest.json"
+  }
+}

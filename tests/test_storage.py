@@ -18,6 +18,7 @@ class StorageTestCase(unittest.TestCase):
                 knowledge=repo_root / ".backstory" / "knowledge",
                 sessions=repo_root / ".backstory" / "knowledge" / "sessions",
                 pending=repo_root / ".backstory" / "knowledge" / "sessions" / "latest.md",
+                transcripts=repo_root / ".backstory" / "transcripts",
                 redactions=repo_root / ".backstory" / "redactions",
                 knowledge_index=repo_root / ".backstory" / "knowledge" / "index.md",
                 sessions_index=repo_root / ".backstory" / "knowledge" / "sessions" / "index.md",
@@ -33,6 +34,7 @@ class StorageTestCase(unittest.TestCase):
             self.assertTrue(paths.root.is_dir())
             self.assertTrue(paths.knowledge.is_dir())
             self.assertTrue(paths.sessions.is_dir())
+            self.assertTrue(paths.transcripts.is_dir())
             self.assertTrue(paths.redactions.is_dir())
 
 

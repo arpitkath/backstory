@@ -9,19 +9,28 @@ from backstory.hooks import hooks_installed, install_hooks
 from backstory.storage import ensure_storage_layout
 
 
+CLAUDE_SETTINGS_CONTENT = {
+    "env": {
+        "CLAUDE_TRANSCRIPT_PATH": ".backstory/transcripts/latest.json",
+    },
+}
+
+
 def initialize_repo(
     repo_root: Path,
     install_git_hooks: bool = True,
     force: bool = False,
+    install_claude_settings: bool = True,
 ) -> dict:
     """Initialize backstory in a Git repository.
 
     Steps:
         1. Validate the path is inside a Git repository.
-        2. Create the ``.backstory/`` storage layout.
+        2. Create the ``.backstory/`` storage layout (includes ``transcripts/``).
         3. Write a default ``config.json`` (preserves existing if ``force`` is False).
         4. Optionally install Git hooks.
-        5. Return a status dict with results of each step.
+        5. Optionally write ``.claude/settings.json`` with ``CLAUDE_TRANSCRIPT_PATH``.
+        6. Return a status dict with results of each step.
 
     Parameters
     ----------
@@ -31,10 +40,13 @@ def initialize_repo(
         Whether to install pre-commit and post-commit hooks.
     force:
         If True, overwrite existing config and reinstall hooks even if already set up.
+    install_claude_settings:
+        Whether to write ``.claude/settings.json`` for auto transcript capture.
 
     Returns
     -------
-    A dict with keys ``storage_created``, ``config_written``, ``hooks_installed``.
+    A dict with keys ``storage_created``, ``config_written``, ``hooks_installed``,
+    ``claude_settings_written``.
     """
     result: dict = {}
 
@@ -42,7 +54,7 @@ def initialize_repo(
     paths = ensure_storage_layout(repo_root)
     result["storage_created"] = all(
         p.is_dir()
-        for p in [paths.root, paths.knowledge, paths.sessions, paths.redactions]
+        for p in [paths.root, paths.knowledge, paths.sessions, paths.transcripts, paths.redactions]
     )
 
     # --- config ---
@@ -61,6 +73,22 @@ def initialize_repo(
         status = hooks_installed(repo_root)
         result["hooks_installed"] = status.get("pre-commit", False) and status.get("post-commit", False)
 
+    # --- .claude/settings.json ---
+    if install_claude_settings:
+        claude_dir = repo_root / ".claude"
+        claude_settings_path = claude_dir / "settings.json"
+        if claude_settings_path.exists() and not force:
+            result["claude_settings_written"] = False
+        else:
+            claude_dir.mkdir(parents=True, exist_ok=True)
+            claude_settings_path.write_text(
+                json.dumps(CLAUDE_SETTINGS_CONTENT, indent=2) + "\n",
+                encoding="utf-8",
+            )
+            result["claude_settings_written"] = True
+    else:
+        result["claude_settings_written"] = None
+
     return result
 
 
@@ -70,7 +98,7 @@ def print_init_summary(repo_root: Path, result: dict) -> None:
     print()
 
     if result["storage_created"]:
-        print("  Storage:  .backstory/ (knowledge, sessions, redactions)")
+        print("  Storage:  .backstory/ (knowledge, sessions, transcripts, redactions)")
     else:
         print("  Storage:  error creating directories")
 
@@ -88,9 +116,16 @@ def print_init_summary(repo_root: Path, result: dict) -> None:
     else:
         print("  Hooks:    none installed")
 
+    cs = result.get("claude_settings_written")
+    if cs is True:
+        print("  Claude:   .claude/settings.json written (auto transcript capture)")
+    elif cs is False:
+        print("  Claude:   .claude/settings.json already exists (use --force to overwrite)")
+    elif cs is None:
+        print("  Claude:   skipped (--no-claude-settings)")
+
     print()
     print("Next steps:")
-    print("  1. Use an AI coding agent to make changes")
-    print("  2. Run:  backstory dump --agent claude --transcript <path>")
-    print("  3. Commit as usual:  git add . && git commit -m \"...\"")
-    print("  4. Later: backstory why HEAD")
+    print("  1. Use Claude Code to make changes (transcript auto-captured)")
+    print("  2. Commit as usual:  git add . && git commit -m \"...\"")
+    print("  3. Later: backstory why HEAD")

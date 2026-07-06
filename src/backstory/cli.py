@@ -63,7 +63,8 @@ def build_parser() -> argparse.ArgumentParser:
     # --- init ---
     init_p = subparsers.add_parser("init", help="Initialize backstory in this repo")
     init_p.add_argument("--no-hooks", action="store_true", help="Skip Git hook installation")
-    init_p.add_argument("--force", action="store_true", help="Overwrite existing config and hooks")
+    init_p.add_argument("--no-claude-settings", action="store_true", help="Skip .claude/settings.json creation")
+    init_p.add_argument("--force", action="store_true", help="Overwrite existing config, hooks, and claude settings")
 
     # --- dump ---
     dump_p = subparsers.add_parser("dump", help="Capture an AI session")
@@ -380,6 +381,7 @@ def _handle_init(args: argparse.Namespace) -> int:
         repo_root=repo,
         install_git_hooks=not args.no_hooks,
         force=args.force,
+        install_claude_settings=not args.no_claude_settings,
     )
     print_init_summary(repo, result)
     return 0

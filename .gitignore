@@ -10,3 +10,6 @@ dist/
 
 # IDE / editor
 .claude/settings.local.json
+
+# virtual environment (symlink -> /tmp/backstory-venv/)
+venv/

@@ -36,6 +36,7 @@ class InitTestCase(unittest.TestCase):
         self.assertTrue((self.repo_root / ".backstory").is_dir())
         self.assertTrue((self.repo_root / ".backstory" / "knowledge").is_dir())
         self.assertTrue((self.repo_root / ".backstory" / "knowledge" / "sessions").is_dir())
+        self.assertTrue((self.repo_root / ".backstory" / "transcripts").is_dir())
         self.assertTrue((self.repo_root / ".backstory" / "redactions").is_dir())
 
     def test_init_writes_config(self):
@@ -92,6 +93,30 @@ class InitTestCase(unittest.TestCase):
         self.assertIn("backstory initialized", output)
         self.assertIn("pre-commit", output)
         self.assertIn("post-commit", output)
+        self.assertIn("Claude", output)
+        self.assertIn("transcripts", output)
+
+    def test_init_creates_claude_settings(self):
+        result = initialize_repo(self.repo_root)
+
+        self.assertTrue(result["claude_settings_written"])
+        settings_path = self.repo_root / ".claude" / "settings.json"
+        self.assertTrue(settings_path.exists())
+        content = settings_path.read_text()
+        self.assertIn("CLAUDE_TRANSCRIPT_PATH", content)
+
+    def test_init_claude_settings_preserved_without_force(self):
+        initialize_repo(self.repo_root)
+        settings_path = self.repo_root / ".claude" / "settings.json"
+        original = settings_path.read_text()
+
+        result = initialize_repo(self.repo_root, force=False)
+        self.assertFalse(result["claude_settings_written"])
+        self.assertEqual(settings_path.read_text(), original)
+
+    def test_init_can_skip_claude_settings(self):
+        result = initialize_repo(self.repo_root, install_claude_settings=False)
+        self.assertIsNone(result["claude_settings_written"])
 
 
 if __name__ == "__main__":

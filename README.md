@@ -1,13 +1,17 @@
 # Backstory
 
-Backstory is a local-first memory layer for AI-assisted coding. It helps
-developers recover why a decision was made later, after the codebase and the
-conversation have both moved on in a fast-changing environment. It captures
-session context, stores the durable record as OKF (Open Knowledge Format;
-[Google Cloud announcement](https://cloud.google.com/blog/products/data-analytics))
-markdown, and links that memory to Git commits so the reasoning stays
-searchable. It also supports contradiction detection so later changes that
-appear to reverse earlier decisions can be surfaced quickly.
+Backstory is a local-first memory layer for AI-assisted coding.
+
+- Helps recover why a decision was made later, after the codebase and the
+  conversation have both moved on
+- Stores the durable record as OKF (Open Knowledge Format;
+  [Google Cloud announcement](https://cloud.google.com/blog/products/data-analytics))
+  markdown
+- Links that memory to Git commits so the reasoning stays searchable
+- Surfaces contradiction detection when later changes appear to reverse earlier
+  decisions
+- Connects code to the decision-making process, not just to comments or chat
+  transcripts
 
 ## What It Does
 

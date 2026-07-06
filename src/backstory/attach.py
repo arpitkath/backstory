@@ -10,18 +10,24 @@ from backstory.okf import parse_session_markdown, render_session_markdown, sessi
 from backstory.storage import build_storage_paths, ensure_storage_layout
 
 
-def attach_pending_to_commit(repo_root: Path, commit_hash: str) -> dict[str, Any] | None:
+def attach_pending_to_commit(repo_root: Path, commit_spec: str) -> dict[str, Any] | None:
     """Attach the latest pending AI session to a Git commit.
 
     Steps:
-        1. Load the pending session.
-        2. Update it with the commit hash.
-        3. Write a summary file.
-        4. Save commit-to-session mapping via Git notes.
-        5. Clear the pending session.
+        1. Resolve the commit spec (e.g. ``HEAD``) to a full SHA.
+        2. Load the pending session.
+        3. Update it with the resolved commit hash.
+        4. Write a summary file.
+        5. Save commit-to-session mapping via Git notes.
+        6. Clear the pending session.
 
     Returns the updated session dict, or ``None`` if no pending session exists.
     """
+    # Resolve commit spec to a full hash
+    commit_hash = _resolve_commit(repo_root, commit_spec)
+    if commit_hash is None:
+        return None
+
     session = load_pending_session(repo_root)
     if session is None:
         return None
@@ -44,6 +50,23 @@ def attach_pending_to_commit(repo_root: Path, commit_hash: str) -> dict[str, Any
     clear_pending_session(repo_root)
 
     return session
+
+
+def _resolve_commit(repo_root: Path, spec: str) -> str | None:
+    """Resolve a commit spec (e.g. ``HEAD``) to a full SHA."""
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", spec],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode == 0:
+            return result.stdout.strip() or None
+        return None
+    except OSError:
+        return None
 
 
 def _get_commit_message(repo_root: Path, commit_hash: str) -> str | None:

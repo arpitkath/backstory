@@ -64,7 +64,7 @@ def load_session_for_commit(
     # Strategy 1: Git notes
     # ------------------------------------------------------------------
     result = _run_git(
-        ["notes", "show", commit_hash],
+        ["notes", "--ref=refs/notes/backstory", "show", commit_hash],
         cwd=repo_root,
         check=False,
     )

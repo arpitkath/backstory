@@ -524,7 +524,8 @@ def _handle_attach(args: argparse.Namespace) -> int:
             print("No pending session to attach.")
         return 0
 
-    print(f"Attached session {result['session_id']} to commit {args.commit_spec}")
+    commit_hash = result.get("commit", {}).get("hash", args.commit_spec)
+    print(f"Attached session {result['session_id']} to commit {commit_hash}")
     return 0
 
 

@@ -8,5 +8,8 @@ dist/
 # IDE / editor
 .claude/settings.local.json
 
+# Claude memory
+.claude/memory/
+
 # virtual environment (symlink -> /tmp/backstory-venv/)
 venv/

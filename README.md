@@ -149,22 +149,62 @@ The capture and retrieval pipeline has four steps:
 
 Git stays the linkage layer. Backstory stores the reasoning.
 
-## Quick Start
+## Prerequisites
 
-Install the PyPI package:
+- **Python 3.11+** — Backstory requires Python 3.11 or newer.
+- **pip or pipx** — Either package manager works. On fresh machines, `pipx` is
+  recommended because it installs Backstory in its own isolated environment
+  without needing a separate virtual environment.
+- **Git** — Backstory stores session memory inside a Git repository and links
+  it to commits.
+
+## Install
+
+Install directly from the repository:
+
+```bash
+# Using pip (system-wide or in a virtual environment)
+python3 -m pip install git+https://github.com/arpitkath/backstory.git
+
+# Using pipx (isolated, recommended for fresh machines)
+pipx install git+https://github.com/arpitkath/backstory.git
+```
+
+Or install the PyPI package:
 
 ```bash
 python -m pip install backstory-cli
 ```
 
-The installed command is still:
+The installed command is:
 
 ```bash
 backstory --help
 ```
 
+## First Run
+
+Initialize Backstory in your repository:
+
 ```bash
 backstory init
+```
+
+This creates a `.backstory/` directory in your repo with the necessary
+storage, indexing, and configuration. It also optionally installs Git hooks
+that help keep session memory linked to your commits.
+
+## Verify
+
+Check that everything is set up correctly:
+
+```bash
+backstory status
+```
+
+If you have an existing commit with a linked session, view its reasoning:
+
+```bash
 backstory why HEAD
 ```
 

@@ -6,16 +6,26 @@
 **Git shows what changed. Backstory shows why.**
 
 Backstory preserves the decision-making process behind AI-assisted code
-changes, not just the diff or a pile of comments.
+changes. It captures session context from AI coding tools, extracts the
+durable reasoning (decisions, risks, alternatives), stores it as local
+markdown, and links it to Git commits so you can retrieve the *why* later.
 
-- Local-first by default, with everything stored in the repo unless you choose
-  otherwise
+> **Why not just write good commit messages?**
+> Commit messages describe what changed. They rarely capture the rejected
+> alternatives, the risks you accepted, or the reasoning trail across a
+> multi-step AI session. Backstory fills that gap: it stores the decision
+> trail the AI tool produced, not just the final diff.
 
-- Recovers why a decision was made later, after the codebase has moved on
-- Stores durable session memory as OKF (Open Knowledge Format) markdown
-- Links that memory to Git commits so the reasoning stays searchable
-- Detects contradictions when later changes appear to reverse earlier decisions
-- Connects code to the decision-making process, not just to chat logs
+- Local-first by default — everything stays in your repo
+- Recovers *why* a decision was made, after the codebase has moved on
+- Stores durable session memory as OKF markdown — human-readable,
+  Git-friendly, and agent-friendly
+- Links memory to Git commits so the reasoning stays searchable
+- Detects contradictions when later changes reverse earlier decisions
+- Extracts decisions, risks, and follow-ups — not raw chat logs
+
+Backstory is not an AI coding agent. It is the memory layer around
+AI-assisted coding.
 
 ## Example
 
@@ -54,6 +64,18 @@ Risks:
 ```
 
 That is the useful part: not just what changed, but why it changed.
+
+## Contradiction Detection
+
+Backstory also watches for new changes that appear to reverse earlier recorded
+decisions.
+
+```text
+⚠ This change may contradict a decision from commit 8f21c9a:
+  "payment.failed should mark subscription as pending, not cancelled"
+```
+
+That turns the tool from an archive into a guardrail.
 
 ## What Gets Stored
 
@@ -105,47 +127,40 @@ This file lives at `.backstory/knowledge/sessions/sha256-a1b2c3d4....md`.
 It is human-readable, Git-friendly, and stores only the durable
 decisions — not the full chat transcript.
 
-## Contradiction Detection
-
-Backstory also watches for new changes that appear to reverse earlier recorded
-decisions.
-
-```text
-⚠ This change may contradict a decision from commit 8f21c9a:
-  "payment.failed should mark subscription as pending, not cancelled"
-```
-
-That turns the tool from an archive into a guardrail.
-
 ## How It Works
 
 ![Backstory flow diagram](docs/assets/how-it-works-flow.gif)
 
-This shows the capture path: tool-native session capture, OKF storage, commit
-linking, retrieval, and contradiction warnings.
-
-## Terminal Walkthrough
-
 ![Backstory terminal walkthrough](docs/assets/how-it-works-terminal.gif)
 
-This shows the same flow in CLI form: initialize, ingest, link, and retrieve
-the stored decision trail.
+The capture and retrieval pipeline has four steps:
 
-## What Backstory Does
+1. **Capture** — A tool-native hook, callback, or transcript exporter
+   captures the AI coding session and hands it to Backstory.
+2. **Ingest** — Backstory extracts the durable decisions, risks, follow-ups,
+   and changed files from the session. The raw conversation is discarded —
+   only the reasoning is kept.
+3. **Link** — The extracted session is attached to the relevant Git commit
+   via `backstory attach HEAD`, creating a stable record in
+   `.backstory/knowledge/sessions/`.
+4. **Retrieve** — Later, you can query the stored reasoning by commit, file,
+   line, range, or diff using commands like `backstory why HEAD`.
 
-- Captures AI coding session context
-- Extracts durable decisions, risks, follow-ups, and changed files instead of
-  storing full chats or raw context
-- Stores memory as OKF-style markdown under `.backstory/knowledge/`
-- Links session memory to Git commits
-- Retrieves context by commit, file, line, range, or current diff
-- Warns when a new change appears to contradict an earlier decision
-- Keeps raw transcript persistence out of the durable storage path
-
-Backstory is not an AI coding agent. It is the memory layer around
-AI-assisted coding.
+Git stays the linkage layer. Backstory stores the reasoning.
 
 ## Quick Start
+
+Install the PyPI package:
+
+```bash
+python -m pip install backstory-cli
+```
+
+The installed command is still:
+
+```bash
+backstory --help
+```
 
 ```bash
 backstory init
@@ -180,18 +195,29 @@ backstory dump --agent claude --transcript ./transcript.md
 | `backstory status` | Show Backstory state in this repo |
 | `backstory redact` | Re-scan and redact sensitive data from stored sessions |
 
-## How It Works
+## Redaction
 
-1. A tool-native hook, callback, or transcript exporter captures the session.
-2. Backstory ingests the session into OKF markdown.
-3. The session is attached to the relevant Git commit.
-4. Later, you query the commit, file, line, range, or diff.
+Backstory automatically scans for and redacts sensitive data before it reaches
+disk. Here is what a session looks like when a transcript contains an API key:
 
-Git stays the linkage layer. Backstory stores the reasoning.
+```text
+Before redaction:
+  decisions:
+    - "Store the key in RAZORPAY_API_KEY=sk_live_abcd1234..."
+    - "Webhook endpoint is at https://api.example.com/webhooks"
+
+After redaction:
+  decisions:
+    - "Store the key in RAZORPAY_API_KEY=***"
+    - "Webhook endpoint is at https://api.example.com/webhooks"
+```
+
+The redaction step runs during `backstory dump` and can be re-run later with
+`backstory redact` if new patterns are added. Raw transcripts are never
+stored as the durable session record — only the redacted, extracted reasoning
+persists.
 
 ## Storage
-
-Backstory stores local project memory under `.backstory/`:
 
 ```text
 .backstory/
@@ -219,7 +245,7 @@ Backstory is local-first.
 - Session memory stays inside the repository
 - Raw transcripts are not persisted as the durable session record
 - Backstory stores extracted decisions, risks, follow-ups, changed files, and
-  Git context
+  Git context — not raw conversation
 
 ## Integration
 
@@ -235,3 +261,8 @@ ingestion step, not the primary workflow.
 - [Engineering walkthrough](docs/engineering-walkthrough.md)
 - [Product spec](docs/prd.md)
 - [Retrieval model](docs/retrieval.md)
+
+---
+
+If you find this useful, [starring the repo](https://github.com/arpitkath/backstory)
+helps others discover it.

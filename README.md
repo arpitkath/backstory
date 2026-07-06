@@ -1,5 +1,6 @@
 # Backstory
 
+[![PyPI version](https://img.shields.io/pypi/v/backstory-cli)]()
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)]()
 [![License](https://img.shields.io/badge/license-MIT-green)]()
 [![Knowledge Format](https://img.shields.io/badge/knowledge%20format-OKF-orange)]()

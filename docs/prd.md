@@ -127,13 +127,13 @@ The product is not an AI coding agent. It is a memory and provenance layer for A
 Developer installs the CLI:
 
 ```bash
-pipx install backstory
+pipx install backstory-cli
 ```
 
 Or:
 
 ```bash
-python -m pip install backstory
+python -m pip install backstory-cli
 ```
 
 Then inside a Git repository:

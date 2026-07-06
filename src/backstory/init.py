@@ -13,6 +13,20 @@ CLAUDE_SETTINGS_CONTENT = {
     "env": {
         "CLAUDE_TRANSCRIPT_PATH": ".backstory/transcripts/latest.json",
     },
+    "hooks": {
+        "SessionEnd": [
+            {
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "backstory dump",
+                        "timeout": 30,
+                        "statusMessage": "Archiving session...",
+                    },
+                ],
+            },
+        ],
+    },
 }
 
 # Known AI tool transcript env vars for status checking

@@ -7,8 +7,6 @@
 
 **Git shows what changed. Backstory shows why.**
 
-![Backstory terminal walkthrough](docs/assets/how-it-works-terminal.gif)
-
 Ever opened an AI-generated commit and wondered:
 
 - Why was this approach chosen?
@@ -16,6 +14,8 @@ Ever opened an AI-generated commit and wondered:
 - What assumptions are hidden in this code?
 
 ## What is Backstory?
+
+![Backstory terminal walkthrough](docs/assets/how-it-works-terminal.gif)
 
 Backstory is a local-first AI memory layer for Git repositories. It captures session context from AI coding tools, extracts the durable reasoning (decisions, risks, alternatives), stores it as Google's OKF markdown, and links it to Git commits so you can retrieve the *why* later.
 

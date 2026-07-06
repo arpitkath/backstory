@@ -1,8 +1,5 @@
 __pycache__/
 
-# backstory storage
-.backstory/
-
 # build artifacts
 dist/
 *.egg-info/

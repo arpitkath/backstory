@@ -1,8 +1,10 @@
 # Backstory
 
-Backstory is a local-first memory layer for AI-assisted coding. It captures
-session context, stores the durable record as OKF markdown, links that memory
-to Git commits, and helps answer why code changed later.
+Backstory is a local-first memory layer for AI-assisted coding. It helps
+developers recover why a decision was made later, after the codebase and the
+conversation have both moved on in a fast-changing environment. It captures
+session context, stores the durable record as OKF markdown, and links that
+memory to Git commits so the reasoning stays searchable.
 
 ## What It Does
 
@@ -74,4 +76,3 @@ hosted service or extension to be useful.
 - [Engineering walkthrough](docs/engineering-walkthrough.md)
 - [Product spec](docs/prd.md)
 - [Retrieval model](docs/retrieval.md)
-

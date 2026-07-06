@@ -1,10 +1,10 @@
-# agent-why MVP Implementation Plan
+# backstory MVP Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build a local-first Python CLI that captures AI coding sessions, stores them as compressed immutable objects, links them to Git commits, and explains `why` a commit happened.
 
-**Architecture:** Use a small Python package with a single CLI entrypoint, a storage layer backed by `.agent-why/` plus SQLite, and focused helper modules for Git state, redaction, compression, and summary rendering. Keep command handlers thin and move repository logic into reusable functions so `init`, `dump`, `attach`, `why`, `show`, `status`, `search`, `context`, `redact`, and `repair` share the same storage and indexing primitives.
+**Architecture:** Use a small Python package with a single CLI entrypoint, a storage layer backed by `.backstory/` plus SQLite, and focused helper modules for Git state, redaction, compression, and summary rendering. Keep command handlers thin and move repository logic into reusable functions so `init`, `dump`, `attach`, `why`, `show`, `status`, `search`, `context`, `redact`, and `repair` share the same storage and indexing primitives.
 
 **Tech Stack:** Python 3.11+, `argparse`, `sqlite3`, `json`, `hashlib`, `subprocess`, `pathlib`, `zstandard`, `pytest`.
 
@@ -14,9 +14,9 @@
 
 **Files:**
 - Create: `pyproject.toml`
-- Create: `src/agent_why/__init__.py`
-- Create: `src/agent_why/__main__.py`
-- Create: `src/agent_why/cli.py`
+- Create: `src/backstory/__init__.py`
+- Create: `src/backstory/__main__.py`
+- Create: `src/backstory/cli.py`
 - Create: `tests/test_cli.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -24,7 +24,7 @@
 ```python
 import pytest
 
-from agent_why.cli import build_parser
+from backstory.cli import build_parser
 
 
 def test_cli_exposes_core_commands(capsys):
@@ -41,7 +41,7 @@ def test_cli_exposes_core_commands(capsys):
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `pytest tests/test_cli.py::test_cli_exposes_core_commands -v`
-Expected: FAIL because `agent_why.cli.build_parser` does not exist yet.
+Expected: FAIL because `backstory.cli.build_parser` does not exist yet.
 
 - [ ] **Step 3: Write minimal implementation**
 
@@ -52,7 +52,7 @@ import argparse
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="agent-why")
+    parser = argparse.ArgumentParser(prog="backstory")
     subparsers = parser.add_subparsers(dest="command", required=True)
     for name in [
         "init",
@@ -83,16 +83,16 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add pyproject.toml src/agent_why tests/test_cli.py
-git commit -m "feat: scaffold agent-why cli"
+git add pyproject.toml src/backstory tests/test_cli.py
+git commit -m "feat: scaffold backstory cli"
 ```
 
 ### Task 2: Add repository, config, and storage primitives
 
 **Files:**
-- Create: `src/agent_why/config.py`
-- Create: `src/agent_why/storage.py`
-- Create: `src/agent_why/git.py`
+- Create: `src/backstory/config.py`
+- Create: `src/backstory/storage.py`
+- Create: `src/backstory/git.py`
 - Create: `tests/test_storage.py`
 - Create: `tests/test_config.py`
 
@@ -101,25 +101,25 @@ git commit -m "feat: scaffold agent-why cli"
 ```python
 from pathlib import Path
 
-from agent_why.storage import repo_root, storage_paths
+from backstory.storage import build_storage_paths
 
 
-def test_storage_paths_are_under_agent_why(tmp_path):
+def test_storage_paths_are_under_backstory(tmp_path):
     root = tmp_path / "repo"
     root.mkdir()
     (root / ".git").mkdir()
 
-    paths = storage_paths(root)
+    paths = build_storage_paths(root)
 
-    assert paths.base == root / ".agent-why"
-    assert paths.objects == root / ".agent-why" / "objects"
-    assert paths.index_db == root / ".agent-why" / "index.sqlite"
+    assert paths.root == root / ".backstory"
+    assert paths.objects == root / ".backstory" / "objects"
+    assert paths.index_db == root / ".backstory" / "index.sqlite"
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `pytest tests/test_storage.py::test_storage_paths_are_under_agent_why -v`
-Expected: FAIL because `storage_paths` is not implemented yet.
+Run: `pytest tests/test_storage.py::test_storage_paths_are_under_backstory -v`
+Expected: FAIL because `build_storage_paths` is not implemented yet.
 
 - [ ] **Step 3: Write minimal implementation**
 
@@ -129,8 +129,8 @@ from pathlib import Path
 
 
 @dataclass(frozen=True)
-class StoragePaths:
-    base: Path
+class BackstoryPaths:
+    root: Path
     objects: Path
     summaries: Path
     pending: Path
@@ -138,10 +138,13 @@ class StoragePaths:
     index_db: Path
 
 
-def storage_paths(repo_root: Path) -> StoragePaths:
-    base = repo_root / ".agent-why"
-    return StoragePaths(
-        base=base,
+STORAGE_DIR_NAME = ".backstory"
+
+
+def build_storage_paths(repo_root: Path) -> BackstoryPaths:
+    base = repo_root / STORAGE_DIR_NAME
+    return BackstoryPaths(
+        root=base,
         objects=base / "objects",
         summaries=base / "summaries",
         pending=base / "pending",
@@ -152,22 +155,22 @@ def storage_paths(repo_root: Path) -> StoragePaths:
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `pytest tests/test_storage.py::test_storage_paths_are_under_agent_why -v`
+Run: `pytest tests/test_storage.py::test_storage_paths_are_under_backstory -v`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/agent_why tests/test_storage.py tests/test_config.py
+git add src/backstory tests/test_storage.py tests/test_config.py
 git commit -m "feat: add storage primitives"
 ```
 
-### Task 3: Implement `agent-why init` and hook installation
+### Task 3: Implement `backstory init` and hook installation
 
 **Files:**
-- Modify: `src/agent_why/cli.py`
-- Create: `src/agent_why/init.py`
-- Create: `src/agent_why/hooks.py`
+- Modify: `src/backstory/cli.py`
+- Create: `src/backstory/init.py`
+- Create: `src/backstory/hooks.py`
 - Create: `tests/test_init.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -175,26 +178,26 @@ git commit -m "feat: add storage primitives"
 ```python
 from pathlib import Path
 
-from agent_why.init import initialize_repo
+from backstory.init import initialize_repo
 
 
-def test_init_creates_agent_why_layout(tmp_path):
+def test_init_creates_backstory_layout(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
     (repo / ".git").mkdir()
 
     initialize_repo(repo, install_hooks=True)
 
-    assert (repo / ".agent-why").is_dir()
-    assert (repo / ".agent-why" / "config.json").is_file()
-    assert (repo / ".agent-why" / "objects").is_dir()
+    assert (repo / ".backstory").is_dir()
+    assert (repo / ".backstory" / "config.json").is_file()
+    assert (repo / ".backstory" / "objects").is_dir()
     assert (repo / ".git" / "hooks" / "pre-commit").exists()
     assert (repo / ".git" / "hooks" / "post-commit").exists()
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `pytest tests/test_init.py::test_init_creates_agent_why_layout -v`
+Run: `pytest tests/test_init.py::test_init_creates_backstory_layout -v`
 Expected: FAIL because `initialize_repo` does not exist yet.
 
 - [ ] **Step 3: Write minimal implementation**
@@ -203,7 +206,7 @@ Expected: FAIL because `initialize_repo` does not exist yet.
 import json
 from pathlib import Path
 
-from .storage import storage_paths
+from .storage import build_storage_paths
 
 
 DEFAULT_CONFIG = {
@@ -219,46 +222,46 @@ DEFAULT_CONFIG = {
 
 
 def initialize_repo(repo_root: Path, install_hooks: bool = True) -> None:
-    paths = storage_paths(repo_root)
-    paths.base.mkdir(parents=True, exist_ok=True)
+    paths = build_storage_paths(repo_root)
+    paths.root.mkdir(parents=True, exist_ok=True)
     paths.objects.mkdir(parents=True, exist_ok=True)
     paths.summaries.mkdir(parents=True, exist_ok=True)
     paths.pending.mkdir(parents=True, exist_ok=True)
     paths.redactions.mkdir(parents=True, exist_ok=True)
     paths.index_db.touch(exist_ok=True)
-    paths.base.joinpath("config.json").write_text(json.dumps(DEFAULT_CONFIG, indent=2) + "\n", encoding="utf-8")
+    paths.root.joinpath("config.json").write_text(json.dumps(DEFAULT_CONFIG, indent=2) + "\n", encoding="utf-8")
     if install_hooks:
         # hook installation stub for the first pass
-        (repo_root / ".git" / "hooks" / "pre-commit").write_text("#!/bin/sh\nagent-why dump --hook pre-commit\n", encoding="utf-8")
-        (repo_root / ".git" / "hooks" / "post-commit").write_text("#!/bin/sh\nagent-why attach HEAD --hook post-commit\n", encoding="utf-8")
+        (repo_root / ".git" / "hooks" / "pre-commit").write_text("#!/bin/sh\nbackstory dump --hook pre-commit\n", encoding="utf-8")
+        (repo_root / ".git" / "hooks" / "post-commit").write_text("#!/bin/sh\nbackstory attach HEAD --hook post-commit\n", encoding="utf-8")
 ```
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `pytest tests/test_init.py::test_init_creates_agent_why_layout -v`
+Run: `pytest tests/test_init.py::test_init_creates_backstory_layout -v`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/agent_why tests/test_init.py
-git commit -m "feat: add agent-why init"
+git add src/backstory tests/test_init.py
+git commit -m "feat: add backstory init"
 ```
 
-### Task 4: Implement `agent-why dump` with redaction, compression, and pending state
+### Task 4: Implement `backstory dump` with redaction, compression, and pending state
 
 **Files:**
-- Create: `src/agent_why/redact.py`
-- Create: `src/agent_why/session.py`
-- Create: `src/agent_why/dump.py`
-- Modify: `src/agent_why/cli.py`
+- Create: `src/backstory/redact.py`
+- Create: `src/backstory/session.py`
+- Create: `src/backstory/dump.py`
+- Modify: `src/backstory/cli.py`
 - Create: `tests/test_dump.py`
 - Create: `tests/test_redact.py`
 
 - [ ] **Step 1: Write the failing test**
 
 ```python
-from agent_why.redact import redact_text
+from backstory.redact import redact_text
 
 
 def test_redact_text_masks_obvious_secrets():
@@ -299,19 +302,19 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/agent_why tests/test_dump.py tests/test_redact.py
+git add src/backstory tests/test_dump.py tests/test_redact.py
 git commit -m "feat: add dump redaction and session storage"
 ```
 
 ### Task 5: Implement commit linking and retrieval commands
 
 **Files:**
-- Create: `src/agent_why/attach.py`
-- Create: `src/agent_why/why.py`
-- Create: `src/agent_why/show.py`
-- Create: `src/agent_why/status.py`
-- Create: `src/agent_why/summary.py`
-- Modify: `src/agent_why/cli.py`
+- Create: `src/backstory/attach.py`
+- Create: `src/backstory/why.py`
+- Create: `src/backstory/show.py`
+- Create: `src/backstory/status.py`
+- Create: `src/backstory/summary.py`
+- Modify: `src/backstory/cli.py`
 - Create: `tests/test_attach.py`
 - Create: `tests/test_summary.py`
 - Create: `tests/test_status.py`
@@ -319,7 +322,7 @@ git commit -m "feat: add dump redaction and session storage"
 - [ ] **Step 1: Write the failing test**
 
 ```python
-from agent_why.summary import render_summary
+from backstory.summary import render_summary
 
 
 def test_render_summary_includes_commit_and_task():
@@ -345,7 +348,7 @@ Expected: FAIL because `render_summary` does not exist yet.
 def render_summary(commit_hash: str, task: str, why: str, files_changed: list[str]) -> str:
     files = "\n".join(f"- {path}" for path in files_changed)
     return (
-        f"# agent-why for Commit {commit_hash}\n\n"
+        f"# backstory for Commit {commit_hash}\n\n"
         f"## Task\n\n{task}\n\n"
         f"## Why\n\n{why}\n\n"
         f"## Files Changed\n\n{files}\n"
@@ -360,17 +363,17 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/agent_why tests/test_attach.py tests/test_summary.py tests/test_status.py
+git add src/backstory tests/test_attach.py tests/test_summary.py tests/test_status.py
 git commit -m "feat: add commit explanation commands"
 ```
 
 ### Task 6: Add search, context, redaction repair, and final polish
 
 **Files:**
-- Create: `src/agent_why/search.py`
-- Create: `src/agent_why/context.py`
-- Create: `src/agent_why/repair.py`
-- Modify: `src/agent_why/cli.py`
+- Create: `src/backstory/search.py`
+- Create: `src/backstory/context.py`
+- Create: `src/backstory/repair.py`
+- Modify: `src/backstory/cli.py`
 - Create: `tests/test_search.py`
 - Create: `tests/test_context.py`
 - Create: `tests/test_repair.py`
@@ -378,7 +381,7 @@ git commit -m "feat: add commit explanation commands"
 - [ ] **Step 1: Write the failing test**
 
 ```python
-from agent_why.search import normalize_query
+from backstory.search import normalize_query
 
 
 def test_normalize_query_lowercases_and_trims():
@@ -405,7 +408,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/agent_why tests/test_search.py tests/test_context.py tests/test_repair.py
+git add src/backstory tests/test_search.py tests/test_context.py tests/test_repair.py
 git commit -m "feat: add search and repair helpers"
 ```
 

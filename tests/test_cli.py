@@ -1,6 +1,6 @@
 import unittest
 
-from agent_why.cli import COMMANDS, build_parser
+from backstory.cli import COMMANDS, build_parser
 
 
 class CliTestCase(unittest.TestCase):

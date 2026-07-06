@@ -1,0 +1,63 @@
+import subprocess
+import tempfile
+import unittest
+from pathlib import Path
+
+from backstory.git import inspect_repository, is_git_repository, resolve_repo_root
+from backstory.storage import BackstoryPaths, build_storage_paths, ensure_storage_layout
+
+
+class StorageTestCase(unittest.TestCase):
+    def test_build_storage_paths_uses_repo_root_backstory_layout(self):
+        repo_root = Path("/tmp/example-repo")
+
+        self.assertEqual(
+            build_storage_paths(repo_root),
+            BackstoryPaths(
+                root=repo_root / ".backstory",
+                objects=repo_root / ".backstory" / "objects",
+                summaries=repo_root / ".backstory" / "summaries",
+                pending=repo_root / ".backstory" / "pending",
+                redactions=repo_root / ".backstory" / "redactions",
+                index_db=repo_root / ".backstory" / "index.sqlite",
+            ),
+        )
+
+    def test_ensure_storage_layout_creates_expected_directories(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo_root = Path(tmpdir)
+
+            paths = ensure_storage_layout(repo_root)
+
+            self.assertTrue(paths.root.is_dir())
+            self.assertTrue(paths.objects.is_dir())
+            self.assertTrue(paths.summaries.is_dir())
+            self.assertTrue(paths.pending.is_dir())
+            self.assertTrue(paths.redactions.is_dir())
+            self.assertEqual(paths.index_db, repo_root / ".backstory" / "index.sqlite")
+            self.assertFalse(paths.index_db.exists())
+
+
+class GitHelpersTestCase(unittest.TestCase):
+    def test_resolve_repo_root_returns_top_level_for_nested_path(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo_root = Path(tmpdir)
+            nested = repo_root / "src" / "backstory"
+            nested.mkdir(parents=True)
+            subprocess.run(["git", "init"], cwd=repo_root, check=True, capture_output=True)
+
+            info = inspect_repository(nested)
+            self.assertTrue(info.is_repository)
+            self.assertEqual(resolve_repo_root(nested), repo_root)
+            self.assertTrue(is_git_repository(nested))
+
+    def test_git_helpers_return_falsey_values_outside_repo(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir)
+
+            self.assertFalse(is_git_repository(path))
+            self.assertIsNone(resolve_repo_root(path))
+
+
+if __name__ == "__main__":
+    unittest.main()

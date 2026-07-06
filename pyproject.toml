@@ -3,13 +3,13 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "agent-why"
+name = "backstory"
 version = "0.1.0"
-description = "Local-first CLI for AI commit memory"
+description = "Every AI-assisted commit has a backstory. Never lose it again."
 requires-python = ">=3.11"
 
 [project.scripts]
-agent-why = "agent_why.cli:main"
+backstory = "backstory.cli:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

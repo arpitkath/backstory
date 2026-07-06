@@ -18,7 +18,7 @@ COMMANDS = [
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="agent-why")
+    parser = argparse.ArgumentParser(prog="backstory")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     for command in COMMANDS:

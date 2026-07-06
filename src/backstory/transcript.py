@@ -2,205 +2,34 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from pathlib import Path
-from typing import IO, Any
+from typing import Any
 
 
 @dataclass
-class ConversationEntry:
-    role: str
-    content: str
-
-
-@dataclass
-class ParsedTranscript:
+class ExtractedDecisions:
+    """Factual information extracted from a transcript — no raw messages stored."""
     agent_name: str
     model: str | None
-    messages: list[ConversationEntry]
-    raw: dict[str, Any] | None = None
+    task: str
+    decisions: list[str] = field(default_factory=list)
+    risks: list[str] = field(default_factory=list)
+    followups: list[str] = field(default_factory=list)
+    files_changed: list[str] = field(default_factory=list)
+    alternatives: list[str] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
-# Claude Code transcript
+# Transcript import (read + normalize only, no extraction)
 # ---------------------------------------------------------------------------
 
-CLAUDE_AGENT_NAMES = {"claude-code", "claude", "claude-code-cli"}
 
-
-def _detect_claude_transcript(data: dict[str, Any]) -> bool:
-    """Detect if a JSON dict is a Claude Code transcript.
-
-    Claude Code transcripts typically have a ``"messages"`` key
-    containing a list of ``{"role": ..., "content": ...}`` objects,
-    or a ``"conversation"`` key.
-    """
-    if "messages" in data and isinstance(data["messages"], list):
-        if data["messages"] and isinstance(data["messages"][0], dict):
-            entry = data["messages"][0]
-            if "role" in entry and "content" in entry:
-                return True
-    if "conversation" in data and isinstance(data["conversation"], list):
-        return True
-    return False
-
-
-def _parse_claude_transcript(data: dict[str, Any]) -> ParsedTranscript:
-    """Parse a Claude Code transcript dict into a structured result."""
-    messages: list[dict] = data.get("messages") or data.get("conversation") or []
-
-    model = data.get("model") or data.get("agent", {}).get("model")
-    if not model and messages:
-        # Try to extract model from metadata or first assistant message
-        pass
-
-    parsed_messages: list[ConversationEntry] = []
-    for msg in messages:
-        role = msg.get("role", "unknown")
-        content = msg.get("content", "")
-        # Some transcripts nest content under a "parts" array
-        if isinstance(content, list):
-            content = "\n".join(
-                p.get("text", json.dumps(p)) if isinstance(p, dict) else str(p)
-                for p in content
-            )
-        parsed_messages.append(ConversationEntry(role=role, content=str(content)))
-
-    # Fallback model extraction from first assistant message if available
-    if not model:
-        for msg in messages:
-            if msg.get("role") == "assistant" and isinstance(msg, dict):
-                model = msg.get("model")
-                if model:
-                    break
-
-    return ParsedTranscript(
-        agent_name="claude-code",
-        model=model or None,
-        messages=parsed_messages,
-        raw=data,
-    )
-
-
-# ---------------------------------------------------------------------------
-# Codex / OpenAI-style transcript
-# ---------------------------------------------------------------------------
-
-CODEX_AGENT_NAMES = {"codex", "openai-codex", "codex-cli"}
-
-
-def _detect_codex_transcript(data: dict[str, Any]) -> bool:
-    """Detect if a JSON dict is a Codex / OpenAI-style transcript.
-
-    Codex transcripts typically have a ``"choices"`` key or
-    a ``"messages"`` key where entries contain ``"role"`` and ``"content"``.
-    They may also use the OpenAI chat completions format.
-    """
-    if "choices" in data and isinstance(data["choices"], list):
-        return True
-    if "messages" in data and isinstance(data["messages"], list):
-        if data["messages"] and isinstance(data["messages"][0], dict):
-            entry = data["messages"][0]
-            # Codex messages have "role" but might also use "function_call" blocks
-            if "role" in entry:
-                return True
-    return False
-
-
-def _parse_codex_transcript(data: dict[str, Any]) -> ParsedTranscript:
-    """Parse a Codex/OpenAI transcript dict."""
-    messages: list[dict] = data.get("messages") or []
-
-    # If in chat completions format, extract from choices
-    if "choices" in data:
-        messages = []
-        for choice in data["choices"]:
-            if "message" in choice:
-                messages.append(choice["message"])
-            elif "delta" in choice:
-                messages.append(choice["delta"])
-
-    model = data.get("model")
-
-    parsed_messages: list[ConversationEntry] = []
-    for msg in messages:
-        role = msg.get("role", "unknown")
-        content = msg.get("content", "")
-        if content is None:
-            content = ""
-        if isinstance(content, list):
-            content = "\n".join(
-                p.get("text", json.dumps(p)) if isinstance(p, dict) else str(p)
-                for p in content
-            )
-        # Handle function calls
-        if "function_call" in msg:
-            fc = msg["function_call"]
-            content += f"\n[Function call: {fc.get('name', 'unknown')}({fc.get('arguments', '')})]"
-        parsed_messages.append(ConversationEntry(role=role, content=str(content)))
-
-    return ParsedTranscript(
-        agent_name="codex",
-        model=model or None,
-        messages=parsed_messages,
-        raw=data,
-    )
-
-
-# ---------------------------------------------------------------------------
-# Generic / fallback transcript
-# ---------------------------------------------------------------------------
-
-def _detect_generic_transcript(data: dict[str, Any]) -> bool:
-    """Fallback: try to extract from any dict."""
-    # Has a "messages" or "conversation" or "dialog" array
-    for key in ("messages", "conversation", "dialog", "history", "chats"):
-        if key in data and isinstance(data[key], list):
-            return True
-    return False
-
-
-def _parse_generic_transcript(data: dict[str, Any]) -> ParsedTranscript:
-    """Parse a generic transcript by looking for common structures."""
-    messages: list[dict] = []
-
-    for key in ("messages", "conversation", "dialog", "history", "chats"):
-        if key in data and isinstance(data[key], list):
-            messages = data[key]
-            break
-
-    parsed_messages: list[ConversationEntry] = []
-    for msg in messages:
-        if isinstance(msg, str):
-            parsed_messages.append(ConversationEntry(role="user", content=msg))
-        elif isinstance(msg, dict):
-            role = msg.get("role", "user")
-            content = msg.get("content", "")
-            if isinstance(content, list):
-                content = " ".join(str(c) for c in content)
-            parsed_messages.append(ConversationEntry(role=role, content=str(content)))
-
-    return ParsedTranscript(
-        agent_name="unknown",
-        model=None,
-        messages=parsed_messages,
-        raw=data,
-    )
-
-
-# ---------------------------------------------------------------------------
-# Public API
-# ---------------------------------------------------------------------------
-
-def import_transcript(path: Path | str) -> ParsedTranscript | None:
-    """Import a transcript file, auto-detecting the format.
-
-    Supports:
-    * Claude Code (JSON with ``messages`` array)
-    * Codex / OpenAI (JSON with ``choices`` or ``messages``)
-    * Generic conversation JSON
+def import_transcript(path: Path | str) -> dict[str, Any] | None:
+    """Read a transcript file and return the raw parsed JSON.
 
     Returns ``None`` if the file cannot be read or parsed.
+    The caller is responsible for passing the content to the
+    agent summarizer (``summarize_transcript``).
     """
     if isinstance(path, str):
         path = Path(path)
@@ -209,47 +38,140 @@ def import_transcript(path: Path | str) -> ParsedTranscript | None:
         return None
 
     try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
+        return json.loads(path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, UnicodeDecodeError, OSError):
         return None
 
-    if not isinstance(raw, dict):
-        return None
 
-    # Auto-detect format
-    if _detect_claude_transcript(raw):
-        return _parse_claude_transcript(raw)
-    if _detect_codex_transcript(raw):
-        return _parse_codex_transcript(raw)
-    if _detect_generic_transcript(raw):
-        return _parse_generic_transcript(raw)
+def normalize_messages(raw: dict[str, Any]) -> list[dict[str, str]]:
+    """Normalize any supported transcript format to ``[{role, content}, ...]``.
 
-    # Single conversation entry — wrap it
-    return ParsedTranscript(
-        agent_name="unknown",
-        model=None,
-        messages=[ConversationEntry(role="user", content=json.dumps(raw))],
-        raw=raw,
-    )
+    Supports Claude Code (``messages`` / ``conversation`` arrays),
+    Codex/OpenAI (``choices`` array with ``message`` objects),
+    and generic (``dialog``, ``history``, ``chats``).
+    """
+    messages: list[dict[str, Any]] = []
+
+    # Claude Code format
+    if "messages" in raw and isinstance(raw["messages"], list):
+        messages = raw["messages"]
+    elif "conversation" in raw and isinstance(raw["conversation"], list):
+        messages = raw["conversation"]
+
+    # Codex / OpenAI format
+    if not messages and "choices" in raw and isinstance(raw["choices"], list):
+        for choice in raw["choices"]:
+            if "message" in choice:
+                messages.append(choice["message"])
+            elif "delta" in choice:
+                messages.append(choice["delta"])
+
+    # Generic fallback
+    if not messages:
+        for key in ("dialog", "history", "chats"):
+            if key in raw and isinstance(raw[key], list):
+                messages = raw[key]
+                break
+
+    # Normalize to {role, content} strings
+    result: list[dict[str, str]] = []
+    for msg in messages:
+        if isinstance(msg, str):
+            result.append({"role": "user", "content": msg})
+        elif isinstance(msg, dict):
+            role = str(msg.get("role", "user"))
+            content = msg.get("content", "")
+            if content is None:
+                content = ""
+            if isinstance(content, list):
+                content = "\n".join(
+                    p.get("text", json.dumps(p)) if isinstance(p, dict) else str(p)
+                    for p in content
+                )
+            result.append({"role": role, "content": str(content)})
+
+    return result
 
 
-def format_transcript_summary(transcript: ParsedTranscript, max_entries: int = 5) -> str:
-    """Format a parsed transcript into a short human-readable preview."""
+def detect_agent_name(raw: dict[str, Any]) -> str:
+    """Detect the agent name from transcript metadata."""
+    agent = raw.get("agent")
+    if isinstance(agent, dict):
+        name = agent.get("name") or agent.get("agent") or ""
+        if name:
+            return str(name)
+
+    model = str(raw.get("model", ""))
+    if "claude" in model.lower():
+        return "claude-code"
+    if "gpt" in model.lower() or "o1" in model.lower() or "o3" in model.lower():
+        return "codex"
+    if "deepseek" in model.lower() or "sonnet" in model.lower():
+        return "claude-code"
+
+    return "unknown"
+
+
+def detect_model(raw: dict[str, Any]) -> str | None:
+    """Extract model name from transcript metadata."""
+    model = raw.get("model")
+    if model:
+        return str(model)
+    agent = raw.get("agent")
+    if isinstance(agent, dict) and "model" in agent:
+        return str(agent["model"])
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Decision formatting for CLI output
+# ---------------------------------------------------------------------------
+
+
+def format_decisions(d: ExtractedDecisions) -> str:
+    """Format extracted decisions for human-readable CLI output."""
     lines: list[str] = []
-    lines.append(f"Agent: {transcript.agent_name}")
-    if transcript.model:
-        lines.append(f"Model: {transcript.model}")
-    lines.append(f"Messages: {len(transcript.messages)}")
+
+    lines.append(f"Agent: {d.agent_name or 'unknown'}")
+    if d.model:
+        lines.append(f"Model: {d.model}")
     lines.append("")
 
-    shown = transcript.messages[:max_entries]
-    for entry in shown:
-        preview = entry.content[:120].replace("\n", " ")
-        if len(entry.content) > 120:
-            preview += "..."
-        lines.append(f"[{entry.role}] {preview}")
+    if d.task:
+        lines.append(f"Task: {d.task}")
+        lines.append("")
 
-    if len(transcript.messages) > max_entries:
-        lines.append(f"... and {len(transcript.messages) - max_entries} more messages")
+    if d.decisions:
+        lines.append("Decisions:")
+        for dec in d.decisions[:20]:
+            lines.append(f"  - {dec}")
+        if len(d.decisions) > 20:
+            lines.append(f"  ... and {len(d.decisions) - 20} more")
+        lines.append("")
+
+    if d.files_changed:
+        lines.append("Files affected:")
+        for f in d.files_changed[:15]:
+            lines.append(f"  - {f}")
+        if len(d.files_changed) > 15:
+            lines.append(f"  ... and {len(d.files_changed) - 15} more")
+        lines.append("")
+
+    if d.risks:
+        lines.append("Risks / Cautions:")
+        for r in d.risks[:10]:
+            lines.append(f"  - {r}")
+        lines.append("")
+
+    if d.followups:
+        lines.append("Follow-ups:")
+        for f in d.followups[:10]:
+            lines.append(f"  - {f}")
+        lines.append("")
+
+    if d.alternatives:
+        lines.append("Alternatives considered:")
+        for a in d.alternatives[:5]:
+            lines.append(f"  - {a}")
 
     return "\n".join(lines)

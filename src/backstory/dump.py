@@ -7,20 +7,32 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from backstory.storage import BackstoryPaths, build_storage_paths, ensure_storage_layout
-from backstory.transcript import ParsedTranscript, import_transcript
+from backstory.storage import build_storage_paths, ensure_storage_layout
+from backstory.transcript import ExtractedDecisions
 
 
 def capture_session(
     repo_root: Path,
     task: str | None = None,
     agent: str | None = None,
-    transcript: ParsedTranscript | None = None,
+    decisions: ExtractedDecisions | None = None,
 ) -> dict[str, Any]:
     """Capture the current AI coding session as a structured dict.
 
-    Gathers Git state, the optional task description, agent metadata,
-    and transcript content into a session object ready for storage.
+    Stores Git state, agent metadata, task description, and the
+    extracted factual decisions — no raw conversation content.
+
+    Parameters
+    ----------
+    repo_root:
+        Root of the Git repository.
+    task:
+        Optional short task description from the user.
+    agent:
+        Optional agent name override.
+    decisions:
+        Extracted decisions from a transcript (agent name, model,
+        task, decisions, risks, follow-ups, files changed).
     """
     now = datetime.now(timezone.utc)
 
@@ -32,15 +44,34 @@ def capture_session(
     changed_files_str = _git_output(repo_root, "diff", "--name-only")
     changed_files = [f for f in changed_files_str.split("\n") if f] if changed_files_str else []
 
-    # --- Conversation ---
-    conversation: list[dict[str, str]] = []
-    if transcript:
-        for msg in transcript.messages:
-            conversation.append({"role": msg.role, "content": msg.content})
+    # --- Resolve agent info (decisions object takes priority) ---
+    agent_name: str = "manual"
+    agent_model: str | None = None
+    if decisions:
+        agent_name = decisions.agent_name or agent or "manual"
+        agent_model = decisions.model
+    elif agent:
+        agent_name = agent
 
-    # --- Build session ---
-    # We need a content hash so the session is addressable.
-    session_id = _compute_session_id(repo_root, now, conversation, task or "")
+    # --- Build reasoning summary from extracted decisions ---
+    if decisions:
+        why = decisions.task or task or ""
+        decisions_list = decisions.decisions[:]
+        risks_list = decisions.risks[:]
+        followups_list = decisions.followups[:]
+        alternatives_list = decisions.alternatives[:]
+        # Merge file references from transcript into git changed files
+        if decisions.files_changed:
+            changed_files = list(dict.fromkeys(decisions.files_changed + changed_files))
+    else:
+        why = task or ""
+        decisions_list = []
+        risks_list = []
+        followups_list = []
+        alternatives_list = []
+
+    # --- Build session (NO raw conversation data) ---
+    session_id = _compute_session_id(repo_root, now, task or "", decisions_list)
 
     session: dict[str, Any] = {
         "version": "1.0",
@@ -51,15 +82,14 @@ def capture_session(
             "head": head or "unknown",
         },
         "agent": {
-            "name": transcript.agent_name if transcript else agent or "manual",
-            "model": transcript.model if transcript else None,
+            "name": agent_name,
+            "model": agent_model,
             "source": "hook" if agent is None and not task else "manual",
         },
         "task": {
-            "title": task or "",
+            "title": task or why,
             "user_prompt": task or "",
         },
-        "conversation": conversation,
         "files": {
             "changed": changed_files,
         },
@@ -68,9 +98,11 @@ def capture_session(
             "unstaged": diff_unstaged,
         },
         "reasoning_summary": {
-            "why": "",
-            "decisions": [],
-            "risks": [],
+            "why": why,
+            "decisions": decisions_list,
+            "risks": risks_list,
+            "followups": followups_list,
+            "alternatives": alternatives_list,
         },
         "commit": None,
     }
@@ -136,15 +168,19 @@ def _git_output(repo_root: Path, *args: str) -> str:
 def _compute_session_id(
     repo_root: Path,
     timestamp: datetime,
-    conversation: list[dict[str, str]],
     task: str,
+    decisions: list[str],
 ) -> str:
-    """Compute a content-addressed session ID (SHA-256)."""
+    """Compute a content-addressed session ID (SHA-256).
+
+    Uses only factual data (task, decisions, git HEAD) — no raw
+    conversation content.
+    """
     hasher = hashlib.sha256()
     hasher.update(timestamp.isoformat().encode())
     hasher.update(task.encode())
-    if conversation:
-        hasher.update(json.dumps(conversation, sort_keys=True).encode())
+    for d in decisions:
+        hasher.update(d.encode())
     head = _git_output(repo_root, "rev-parse", "HEAD")
     if head:
         hasher.update(head.encode())

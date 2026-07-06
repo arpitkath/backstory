@@ -15,7 +15,15 @@ from backstory.retrieval import (
     format_retrieval_result,
     resolve_repo_root,
 )
-from backstory.transcript import format_transcript_summary, import_transcript
+from backstory.summarize import summarize_transcript
+from backstory.transcript import (
+    ExtractedDecisions,
+    detect_agent_name,
+    detect_model,
+    format_decisions,
+    import_transcript,
+    normalize_messages,
+)
 
 COMMANDS = [
     "init",
@@ -144,36 +152,67 @@ def _handle_dump(args: argparse.Namespace) -> int:
         print("Not in a Git repository.", file=sys.stderr)
         return 1
 
-    # Import transcript if provided
-    transcript = None
+    # Resolve agent name
+    agent_name = args.agent or "manual"
+    model: str | None = None
+    decisions = None
+
     if args.transcript:
-        transcript = import_transcript(args.transcript)
-        if transcript is None:
+        # Step 1: Read the raw transcript file
+        raw = import_transcript(args.transcript)
+        if raw is None:
             print(f"Warning: could not read transcript from {args.transcript}", file=sys.stderr)
         else:
-            print(format_transcript_summary(transcript))
-            print()
+            # Step 2: Detect agent metadata from the transcript envelope
+            agent_name = detect_agent_name(raw) or agent_name
+            model = detect_model(raw)
 
-    # Resolve agent name
-    agent = args.agent
-    if transcript and not agent:
-        agent = transcript.agent_name
+            # Step 3: Normalize to message list
+            messages = normalize_messages(raw)
 
-    # Capture session
+            if messages:
+                # Step 4: Ask the agent to summarize its own transcript
+                print(f"Asking {agent_name} to summarize transcript...", file=sys.stderr)
+                decisions = summarize_transcript(
+                    messages=messages,
+                    agent_name=agent_name,
+                    model=model,
+                )
+
+                if decisions:
+                    print(format_decisions(decisions))
+                    print()
+                else:
+                    print(
+                        "  (agent summarization unavailable — "
+                        "install claude CLI for automatic extraction)",
+                        file=sys.stderr,
+                    )
+                    # Still capture the session with basic info
+                    decisions = ExtractedDecisions(
+                        agent_name=agent_name,
+                        model=model,
+                        task=args.task or "",
+                        decisions=[],
+                    )
+            else:
+                print("Warning: no messages found in transcript", file=sys.stderr)
+
+    # Override agent name from --agent flag if explicitly provided
+    if args.agent:
+        agent_name = args.agent
+
+    # Capture session (NO raw conversation stored — only extracted decisions)
     session = capture_session(
         repo_root=repo,
         task=args.task,
-        agent=agent,
-        transcript=transcript,
+        agent=agent_name,
+        decisions=decisions,
     )
 
     path = save_pending_session(repo, session)
     print(f"Session saved: {session['session_id']}")
     print(f"Pending:       {path}")
-
-    if args.hook:
-        # Called from a Git hook — be silent beyond the essentials
-        pass
 
     return 0
 

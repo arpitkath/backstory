@@ -5,6 +5,7 @@
 [![License](https://img.shields.io/badge/license-MIT-green)]()
 [![Knowledge Format](https://img.shields.io/badge/knowledge%20format-OKF-orange)]()
 [![Local-first](https://img.shields.io/badge/local--first-no--cloud-purple)]()
+[![CI](https://github.com/arpitkath/backstory/actions/workflows/publish.yml/badge.svg)](https://github.com/arpitkath/backstory/actions/workflows/publish.yml)
 
 **Git shows what changed. Backstory shows why.**
 
@@ -36,14 +37,14 @@ pip install backstory-cli
 git clone https://github.com/arpitkath/backstory.git
 cd backstory
 python -m backstory init
-python -m backstory status
+python -m backstory test
 ```
 
-Then initialize in your repo:
+Then initialize and verify in your repo:
 
 ```bash
 backstory init
-backstory status
+backstory test    # verify everything is set up correctly
 ```
 
 > See a [full worked example](examples/ai-subscription-bug/demo.md) with before/after code and stored session.
@@ -52,6 +53,7 @@ backstory status
 
 - **Commit-level reasoning** -- `backstory why HEAD` shows why a commit was made, not just what changed
 - **Code-aware retrieval** -- Query by file (`backstory file <path>`), line (`backstory line <path>:<line>`), or range (`backstory range <path>:start-end`)
+- **Self-test diagnostics** -- `backstory test` verifies installation, storage, hooks, and AI tool settings in one command
 - **Contradiction detection** -- Warns when new changes reverse earlier recorded decisions
 - **Local-first** -- Everything stays in your repo. No cloud, no telemetry.
 - **Human-readable storage** -- Google's OKF markdown that agents, tools, and humans can read
@@ -128,6 +130,17 @@ Session memory is stored as Google's OKF-style markdown -- human-readable, Git-f
 ## Privacy
 
 Backstory is local-first by design. No cloud service or telemetry is required. Raw transcripts are never persisted -- only extracted decisions, risks, follow-ups, and Git context are kept. Built-in redaction scans for and removes API keys and secrets during ingestion.
+
+## Publishing
+
+New versions are automatically published to PyPI when a GitHub Release is created. See [`.github/workflows/publish.yml`](.github/workflows/publish.yml) for details.
+
+```bash
+# Create a release (triggers CI publish)
+git tag v0.x.x
+git push origin v0.x.x
+gh release create v0.x.x
+```
 
 ## Documentation
 

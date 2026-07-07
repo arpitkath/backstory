@@ -28,11 +28,15 @@ We'll review PRs as soon as possible. Please be responsive to feedback — we ma
 git clone https://github.com/arpitkath/backstory.git
 cd backstory
 
-# Run the CLI directly from source (no install needed)
-python -m backstory <command>
+# Create and activate a virtual environment
+python3 -m venv venv
+source venv/bin/activate
+
+# Install in editable mode
+pip install -e .
 
 # Run tests
-PYTHONPATH=src python -m pytest
+PYTHONPATH=src pytest
 ```
 
 Make sure all tests pass before submitting your PR.
@@ -52,5 +56,3 @@ If you're changing a command or a feature, update the relevant docs in the same 
 ## Questions?
 
 Feel free to open a discussion or issue — we're happy to help.
-
-<!-- backstory test commit -->

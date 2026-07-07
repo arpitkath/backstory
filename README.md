@@ -24,8 +24,19 @@ Backstory is a local-first AI memory layer for Git repositories. It captures ses
 
 ## Quick Install
 
+**Install from PyPI** (recommended):
+
 ```bash
 pip install backstory-cli
+```
+
+**Run from source** (no install needed):
+
+```bash
+git clone https://github.com/arpitkath/backstory.git
+cd backstory
+python -m backstory init
+python -m backstory status
 ```
 
 Then initialize in your repo:
@@ -77,6 +88,7 @@ Git stays the linkage layer. Backstory stores the reasoning.
 | `backstory diff` | 🧪 Experimental | Explain the reasoning behind the current diff |
 | `backstory redact` | ✅ Stable | Re-scan and redact sensitive data |
 | `backstory hooks` | ✅ Stable | Manage Git hook installation |
+| `backstory test` | ✅ Stable | Run self-test to verify installation and setup |
 
 ## Integration
 

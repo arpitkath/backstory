@@ -11,5 +11,6 @@ dist/
 # Claude memory
 .claude/memory/
 
-# virtual environment (symlink -> /tmp/backstory-venv/)
-venv/
+# Backstory local session data
+.backstory/
+

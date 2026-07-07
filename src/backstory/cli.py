@@ -24,6 +24,7 @@ from backstory.retrieval import (
 )
 from backstory.storage import build_storage_paths, ensure_storage_layout
 from backstory.summarize import summarize_transcript
+from backstory.test_cmd import run_self_test
 from backstory.transcript import (
     ExtractedDecisions,
     detect_agent_name,
@@ -42,6 +43,7 @@ COMMANDS = [
     "search",
     "context",
     "status",
+    "test",
     "redact",
     "repair",
     "hooks",
@@ -114,6 +116,9 @@ def build_parser() -> argparse.ArgumentParser:
     hooks_sub.add_parser("disable", help="Remove backstory Git hooks")
     hooks_sub.add_parser("status", help="Show hook installation status")
 
+    # --- test ---
+    subparsers.add_parser("test", help="Run self-test to verify installation and setup")
+
     # --- retrieval commands ---
     file_p = subparsers.add_parser("file", help="Show commits affecting a file")
     file_p.add_argument("path", help="File path to query")
@@ -151,6 +156,7 @@ def _get_handler(command: str):
         "dump": _handle_dump,
         "attach": _handle_attach,
         "why": _handle_why,
+        "test": _handle_test,
         "status": _handle_status,
         "search": _handle_search,
         "redact": _handle_redact,
@@ -628,6 +634,20 @@ def _handle_range(args: argparse.Namespace) -> int:
     )
     print(output)
     return 0
+
+
+# ---------------------------------------------------------------------------
+# test handler
+# ---------------------------------------------------------------------------
+
+
+def _handle_test(args: argparse.Namespace) -> int:
+    repo = _resolve_repo()
+    if repo is None:
+        print("Not in a Git repository.", file=sys.stderr)
+        return 1
+
+    return run_self_test(repo)
 
 
 def _handle_diff(args: argparse.Namespace) -> int:

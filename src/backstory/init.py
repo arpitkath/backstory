@@ -9,9 +9,61 @@ from backstory.hooks import hooks_installed, install_hooks
 from backstory.storage import ensure_storage_layout
 
 
+# Hook script that gets written to .claude/hooks/backstory-session-end.py
+SESSION_END_HOOK_SCRIPT = r'''"""Backstory SessionEnd hook for Claude Code.
+
+Reads the transcript path from stdin (the real path Claude Code writes to),
+copies it to Backstory's expected location, then backgrounds ``backstory dump``
+so the summarization can complete without blocking the Claude Code process.
+"""
+
+import json
+import os
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+
+def main() -> None:
+    data = json.load(sys.stdin)
+
+    # The real transcript path provided by Claude Code
+    transcript_path = data.get("transcript_path", "")
+    if not transcript_path:
+        print("No transcript_path in hook stdin", file=sys.stderr)
+        sys.exit(1)
+
+    src = Path(transcript_path)
+    if not src.exists():
+        print(f"Transcript not found: {src}", file=sys.stderr)
+        sys.exit(1)
+
+    # Resolve repo root from hook cwd (Claude Code sets cwd to repo root)
+    repo_root = Path.cwd()
+    target_dir = repo_root / ".backstory" / "transcripts"
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    # Copy the transcript quickly (the main work of this hook)
+    target = target_dir / "latest.jsonl"
+    shutil.copy2(src, target)
+    print(f"Transcript copied to {target}", file=sys.stderr)
+
+    # Background the heavy summarization — it survives the hook process exit
+    subprocess.Popen(
+        ["backstory", "dump"],
+        cwd=repo_root,
+        preexec_fn=os.setpgrp if hasattr(os, "setpgrp") else None,
+    )
+
+
+if __name__ == "__main__":
+    main()
+'''
+
 CLAUDE_SETTINGS_CONTENT = {
     "env": {
-        "CLAUDE_TRANSCRIPT_PATH": ".backstory/transcripts/latest.json",
+        "CLAUDE_CODE_SESSIONEND_HOOKS_TIMEOUT_MS": "120000",
     },
     "hooks": {
         "SessionEnd": [
@@ -19,8 +71,8 @@ CLAUDE_SETTINGS_CONTENT = {
                 "hooks": [
                     {
                         "type": "command",
-                        "command": "backstory dump",
-                        "timeout": 30,
+                        "command": "python3 .claude/hooks/backstory-session-end.py",
+                        "timeout": 600,
                         "statusMessage": "Archiving session...",
                     },
                 ],
@@ -31,7 +83,7 @@ CLAUDE_SETTINGS_CONTENT = {
 
 # Known AI tool transcript env vars for status checking
 AI_TRANSCRIPT_ENV_VARS = {
-    "claude": "CLAUDE_TRANSCRIPT_PATH",
+    "claude": "CLAUDE_CODE_SESSIONEND_HOOKS_TIMEOUT_MS",
     "cursor": "CURSOR_TRANSCRIPT_PATH",
     "codex": "CODEX_TRANSCRIPT_PATH",
 }
@@ -70,10 +122,31 @@ def check_ai_settings(repo_root: Path) -> dict[str, bool | str]:
                 result[tool] = "misconfigured"
                 continue
             env_config = content.get("env", {}) if isinstance(content, dict) else {}
-            if isinstance(env_config, dict) and env_config.get(env_var) == ".backstory/transcripts/latest.json":
-                result[tool] = True
+
+            if tool == "claude":
+                # Check for the SessionEnd hook-based configuration
+                expected_env_val = "120000"
+                env_ok = (
+                    isinstance(env_config, dict)
+                    and env_config.get("CLAUDE_CODE_SESSIONEND_HOOKS_TIMEOUT_MS") == expected_env_val
+                )
+                hooks = content.get("hooks", {})
+                session_end = hooks.get("SessionEnd", [])
+                hook_ok = any(
+                    "backstory-session-end.py" in str(h)
+                    for hooks_group in session_end
+                    if isinstance(hooks_group, dict)
+                    for h in hooks_group.get("hooks", [])
+                    if isinstance(h, dict)
+                    for command in [h.get("command", "")]
+                )
+                result[tool] = env_ok and hook_ok
             else:
-                result[tool] = "misconfigured"
+                # Legacy check: env var matches expected transcript path
+                if isinstance(env_config, dict) and env_config.get(env_var) == ".backstory/transcripts/latest.json":
+                    result[tool] = True
+                else:
+                    result[tool] = "misconfigured"
 
         elif fmt == "toml":
             # TOML configs — just note it exists; transcript path is typically
@@ -153,6 +226,13 @@ def initialize_repo(
                 encoding="utf-8",
             )
             result["claude_settings_written"] = True
+
+        # Install the SessionEnd hook script
+        hooks_dir = claude_dir / "hooks"
+        hooks_dir.mkdir(parents=True, exist_ok=True)
+        hook_script = hooks_dir / "backstory-session-end.py"
+        hook_script.write_text(SESSION_END_HOOK_SCRIPT, encoding="utf-8")
+        hook_script.chmod(0o755)
     else:
         result["claude_settings_written"] = None
 
@@ -186,6 +266,7 @@ def print_init_summary(repo_root: Path, result: dict) -> None:
     cs = result.get("claude_settings_written")
     if cs is True:
         print("  Claude:   .claude/settings.json written (auto transcript capture)")
+        print("            .claude/hooks/backstory-session-end.py installed")
     elif cs is False:
         print("  Claude:   .claude/settings.json already exists (use --force to overwrite)")
     elif cs is None:

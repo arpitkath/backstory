@@ -1,3 +1,4 @@
+import os
 import subprocess
 import tempfile
 import unittest
@@ -103,7 +104,20 @@ class InitTestCase(unittest.TestCase):
         settings_path = self.repo_root / ".claude" / "settings.json"
         self.assertTrue(settings_path.exists())
         content = settings_path.read_text()
-        self.assertIn("CLAUDE_TRANSCRIPT_PATH", content)
+        self.assertIn("CLAUDE_CODE_SESSIONEND_HOOKS_TIMEOUT_MS", content)
+        self.assertIn("backstory-session-end.py", content)
+
+    def test_init_creates_hook_script(self):
+        result = initialize_repo(self.repo_root)
+
+        self.assertTrue(result["claude_settings_written"])
+        hook_script = self.repo_root / ".claude" / "hooks" / "backstory-session-end.py"
+        self.assertTrue(hook_script.exists())
+        # Should be executable
+        self.assertTrue(os.access(str(hook_script), os.X_OK))
+        content = hook_script.read_text()
+        self.assertIn("transcript_path", content)
+        self.assertIn("backstory dump", content)
 
     def test_init_claude_settings_preserved_without_force(self):
         initialize_repo(self.repo_root)

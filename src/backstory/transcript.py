@@ -27,6 +27,12 @@ class ExtractedDecisions:
 def import_transcript(path: Path | str) -> dict[str, Any] | None:
     """Read a transcript file and return the raw parsed JSON.
 
+    Supports both standard JSON and JSONL (one JSON object per line,
+    as produced by Claude Code v2.1+). For JSONL files, user and
+    assistant messages are extracted from ``type``/``message`` fields
+    and merged into a ``messages`` array along with any top-level
+    metadata.
+
     Returns ``None`` if the file cannot be read or parsed.
     The caller is responsible for passing the content to the
     agent summarizer (``summarize_transcript``).
@@ -38,9 +44,71 @@ def import_transcript(path: Path | str) -> dict[str, Any] | None:
         return None
 
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        text = path.read_text(encoding="utf-8")
+    except (UnicodeDecodeError, OSError):
+        return None
+
+    # Try standard JSON first
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+
+    # JSONL fallback — one JSON object per line (Claude Code v2.1+)
+    try:
+        return _import_jsonl(text)
     except (json.JSONDecodeError, UnicodeDecodeError, OSError):
         return None
+
+
+def _import_jsonl(text: str) -> dict[str, Any] | None:
+    """Parse a JSONL transcript into a merged dict with a ``messages`` array."""
+    merged: dict[str, Any] = {}
+    messages: list[dict[str, Any]] = []
+
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        obj = json.loads(stripped)
+
+        # Collect top-level metadata (agent, model, mode, etc.)
+        if "type" not in obj:
+            # Treat as a metadata-only line
+            merged.update(obj)
+            continue
+
+        line_type = obj.get("type")
+
+        # Session metadata
+        if line_type in ("mode", "metadata", "info"):
+            merged.update(obj)
+            continue
+
+        # User or assistant message
+        if line_type in ("user", "assistant"):
+            msg = obj.get("message")
+            if isinstance(msg, dict) and "role" in msg and "content" in msg:
+                messages.append(msg)
+            continue
+
+        # Treat any other typed line as metadata
+        merged.update(obj)
+
+    if not messages and not merged:
+        return None
+
+    merged["messages"] = messages
+
+    # Detect agent from mode line metadata
+    mode = merged.get("mode", "")
+    if mode:
+        merged.setdefault("agent", {})
+        agent_block = merged["agent"]
+        if isinstance(agent_block, dict) and not agent_block.get("name"):
+            agent_block["name"] = "claude-code" if "claude" in str(mode).lower() else mode
+
+    return merged
 
 
 def normalize_messages(raw: dict[str, Any]) -> list[dict[str, str]]:

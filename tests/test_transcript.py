@@ -45,6 +45,53 @@ class ImportTranscriptTestCase(unittest.TestCase):
         self.assertEqual(result, [1, 2, 3])  # returns raw parsed content
 
 
+    def test_import_jsonl_format(self):
+        """JSONL (one JSON object per line, Claude Code v2.1+)."""
+        lines = [
+            json.dumps({"type": "mode", "mode": "claude-code"}),
+            json.dumps({"type": "user", "message": {"role": "user", "content": "hello"}}),
+            json.dumps({"type": "assistant", "message": {"role": "assistant", "content": "hi there"}}),
+            json.dumps({"type": "user", "message": {"role": "user", "content": "fix the bug"}}),
+        ]
+        path = self.dir / "session.jsonl"
+        path.write_text("\n".join(lines) + "\n")
+        result = import_transcript(path)
+        self.assertIsNotNone(result)
+        self.assertIn("messages", result)
+        self.assertEqual(len(result["messages"]), 3)
+        self.assertEqual(result["messages"][0]["role"], "user")
+        self.assertEqual(result["messages"][0]["content"], "hello")
+        self.assertEqual(result["messages"][1]["role"], "assistant")
+        self.assertEqual(result["messages"][2]["content"], "fix the bug")
+        # Metadata from type=mode line should be merged in
+        self.assertIn("mode", result)
+        self.assertEqual(result["mode"], "claude-code")
+
+    def test_import_jsonl_detects_agent_from_mode(self):
+        lines = [
+            json.dumps({"type": "mode", "mode": "claude-code"}),
+            json.dumps({"type": "user", "message": {"role": "user", "content": "hi"}}),
+        ]
+        path = self.dir / "session.jsonl"
+        path.write_text("\n".join(lines) + "\n")
+        result = import_transcript(path)
+        self.assertIsNotNone(result)
+        agent = result.get("agent", {})
+        self.assertEqual(agent.get("name"), "claude-code")
+
+    def test_import_jsonl_empty_lines_skipped(self):
+        lines = [
+            json.dumps({"type": "user", "message": {"role": "user", "content": "hi"}}),
+            "",
+            json.dumps({"type": "assistant", "message": {"role": "assistant", "content": "hello"}}),
+        ]
+        path = self.dir / "session.jsonl"
+        path.write_text("\n".join(lines))
+        result = import_transcript(path)
+        self.assertIsNotNone(result)
+        self.assertEqual(len(result["messages"]), 2)
+
+
 class NormalizeMessagesTestCase(unittest.TestCase):
     def test_claude_format(self):
         raw = {"messages": [{"role": "user", "content": "hello"}]}

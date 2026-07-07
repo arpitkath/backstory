@@ -45,6 +45,34 @@ backstory diff
 backstory status
 ```
 
+## Publishing (via GitHub Actions)
+
+The package is published to PyPI as `backstory-cli` via GitHub Actions.
+
+### How to publish
+
+1. **Bump version** in `pyproject.toml` (semver: bugfix → patch, new feature → minor, breaking → major)
+2. **Commit and push** the version bump
+3. **Create a GitHub Release** from the pushed tag — the [`publish.yml`](.github/workflows/publish.yml) workflow auto-deploys
+
+### Workflow
+
+- Trigger: `on: release: [published]`
+- Uses **trusted publishing** (OIDC) — no tokens to manage
+- Dry-run: `gh workflow run publish.yml -f dry_run=true`
+
+### Manual publish (fallback)
+
+If CI is down, publish from local:
+
+```bash
+pip install build twine
+python -m build
+twine upload dist/backstory_cli-*
+```
+
+Requires a PyPI API token from https://pypi.org/manage/account/token.
+
 ## Editing Rules
 
 - Prefer small, scoped changes.

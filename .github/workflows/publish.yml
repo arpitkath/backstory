@@ -4,6 +4,11 @@ on:
   release:
     types: [published]
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Build but don't upload"
+        type: boolean
+        default: false
 
 jobs:
   build:
@@ -12,11 +17,13 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
 
       - name: Install build
         run: python -m pip install --upgrade build
@@ -33,6 +40,7 @@ jobs:
   publish:
     name: Publish package to PyPI
     needs: build
+    if: ${{ !inputs.dry_run }}
     runs-on: ubuntu-latest
     environment: pypi
 

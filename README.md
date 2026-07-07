@@ -65,7 +65,7 @@ backstory test    # verify everything is set up correctly
 
 ![Backstory terminal walkthrough](docs/assets/how-it-works-terminal.gif)
 
-1. **Capture** -- A tool-native hook or exporter hands the AI session to Backstory.
+1. **Capture** -- Claude Code's `SessionEnd` hook (set up by `backstory init`) copies the transcript to `.backstory/transcripts/latest.jsonl`.
 2. **Ingest** -- Backstory extracts the durable decisions, risks, and changed files. The raw conversation is discarded.
 3. **Link** -- The session is attached to the relevant Git commit via `backstory attach HEAD`.
 4. **Retrieve** -- Query reasoning by commit, file, line, range, or diff.
@@ -82,20 +82,44 @@ Git stays the linkage layer. Backstory stores the reasoning.
 | `backstory why HEAD` | ✅ Stable | Explain why a commit happened |
 | `backstory test` | ✅ Stable | Run self-test to verify installation and setup |
 | `backstory search <query>` | ✅ Stable | Search past sessions and decisions |
-| `backstory show <session>` | 🧪 Experimental | View a stored session |
-| `backstory file <path>` | 🧪 Experimental | Show AI context relevant to a file |
-| `backstory line <path>:<line>` | 🧪 Experimental | Show the decision behind a specific line |
-| `backstory range <path>:start-end` | 🧪 Experimental | Show context for a range of lines |
-| `backstory code <path>:start-end` | 🧪 Experimental | Show why a code block exists |
-| `backstory diff` | 🧪 Experimental | Explain the reasoning behind the current diff |
+| `backstory diff` | ✅ Stable | Show prior context for uncommitted changes |
+| `backstory file <path>` | ✅ Stable | Show AI context relevant to a file |
+| `backstory line <path>:<line>` | ✅ Stable | Show the decision behind a specific line |
+| `backstory range <path>:start-end` | ✅ Stable | Show context for a range of lines |
+| `backstory code <path>:start-end` | ✅ Stable | Show why a code block exists |
 | `backstory redact` | ✅ Stable | Re-scan and redact sensitive data |
 | `backstory hooks` | ✅ Stable | Manage Git hook installation |
+| `backstory show <session>` | 🧪 Experimental | View a stored session |
+| `backstory session-end` | 🔧 Internal | SessionEnd hook handler (used by Claude Code) |
 
 ## Integration
 
-**Works with Claude Code today.** Cursor and Codex support planned.
+**Works with Claude Code automatically** after `backstory init`. Cursor and Codex support planned.
 
-Backstory is designed for tool-native capture. The preferred path is a tool-specific hook, callback, or transcript exporter that hands the session to Backstory automatically.
+Backstory uses a `SessionEnd` lifecycle hook in `.claude/settings.json` to capture
+transcripts automatically — no env vars or manual paths needed:
+
+```json
+{
+  "env": {
+    "CLAUDE_CODE_SESSIONEND_HOOKS_TIMEOUT_MS": "120000"
+  },
+  "hooks": {
+    "SessionEnd": [{
+      "hooks": [{
+        "type": "command",
+        "command": "backstory session-end",
+        "timeout": 600,
+        "statusMessage": "Archiving session..."
+      }]
+    }]
+  }
+}
+```
+
+`backstory init` writes this config for you.
+
+Backstory also supports Claude Code v2.1+'s JSONL transcript format natively.
 
 See the [integration guide](docs/integration.md) for step-by-step setup.
 
@@ -115,6 +139,8 @@ That turns the tool from an archive into a guardrail.
 ```text
 .backstory/
   config.json
+  transcripts/
+    latest.jsonl
   knowledge/
     index.md
     sessions/

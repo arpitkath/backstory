@@ -136,16 +136,6 @@ def discover_transcript_path(repo_root: Path) -> Path | None:
         if candidate.exists():
             return candidate
 
-    # Fallback: scan ~/.claude/projects/<repo-dirname>/ for latest JSONL
-    claude_projects_dir = Path.home() / ".claude" / "projects"
-    if claude_projects_dir.is_dir():
-        repo_dirname = repo_root.name
-        project_dir = claude_projects_dir / repo_dirname
-        if project_dir.is_dir():
-            latest = _latest_jsonl(project_dir)
-            if latest is not None:
-                return latest
-
     return None
 
 
@@ -243,9 +233,3 @@ def _repo_transcript_candidates(repo_root: Path) -> list[Path]:
                 candidates.append(path)
 
     return candidates
-
-
-def _latest_jsonl(directory: Path) -> Path | None:
-    """Return the most recently modified .jsonl file in a directory, or None."""
-    jsonl_files = sorted(directory.glob("*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True)
-    return jsonl_files[0] if jsonl_files else None

@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 import argparse
+import json
+import os
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -46,6 +50,7 @@ COMMANDS = [
     "redact",
     "repair",
     "hooks",
+    "session-end",
 ]
 
 RETRIEVAL_COMMANDS = [
@@ -115,6 +120,9 @@ def build_parser() -> argparse.ArgumentParser:
     # --- test ---
     subparsers.add_parser("test", help="Run self-test to verify installation and setup")
 
+    # --- session-end ---
+    subparsers.add_parser("session-end", help=argparse.SUPPRESS)  # internal: called from SessionEnd hook
+
     # --- retrieval commands ---
     file_p = subparsers.add_parser("file", help="Show commits affecting a file")
     file_p.add_argument("path", help="File path to query")
@@ -161,6 +169,7 @@ def _get_handler(command: str):
         "range": _handle_range,
         "code": _handle_range,
         "diff": _handle_diff,
+        "session-end": _handle_session_end,
     }.get(command)
 
 
@@ -593,5 +602,47 @@ def _handle_diff(args: argparse.Namespace) -> int:
         for warning in warnings:
             print(f"  - {warning}")
         print()
+
+    return 0
+
+
+def _handle_session_end(args: argparse.Namespace) -> int:
+    """Handle the SessionEnd hook from Claude Code.
+
+    Reads the transcript path from stdin (the real path Claude Code
+    writes to), copies it to ``.backstory/transcripts/latest.jsonl``,
+    then backgrounds ``backstory dump`` for heavy summarization.
+    """
+    try:
+        data = json.load(sys.stdin)
+    except json.JSONDecodeError:
+        print("session-end hook: no JSON on stdin", file=sys.stderr)
+        return 1
+
+    transcript_path = data.get("transcript_path", "")
+    if not transcript_path:
+        print("session-end hook: no transcript_path in stdin", file=sys.stderr)
+        return 1
+
+    src = Path(transcript_path)
+    if not src.exists():
+        print(f"session-end hook: transcript not found: {src}", file=sys.stderr)
+        return 1
+
+    repo_root = Path.cwd()
+    target_dir = repo_root / ".backstory" / "transcripts"
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    # Copy the transcript quickly (the sync part of the hook)
+    target = target_dir / "latest.jsonl"
+    shutil.copy2(src, target)
+    print(f"Transcript copied to {target}", file=sys.stderr)
+
+    # Background the heavy summarization — it survives the hook process exit
+    subprocess.Popen(
+        ["backstory", "dump"],
+        cwd=repo_root,
+        preexec_fn=os.setpgrp if hasattr(os, "setpgrp") else None,
+    )
 
     return 0

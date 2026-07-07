@@ -5,7 +5,6 @@ from unittest.mock import patch
 from pathlib import Path
 
 from backstory.dump import (
-    _latest_jsonl,
     capture_session,
     clear_pending_session,
     discover_transcript_path,
@@ -179,31 +178,6 @@ class DumpTestCase(unittest.TestCase):
         discovered = discover_transcript_path(self.repo_root)
 
         self.assertEqual(discovered, transcript)
-
-    def test_latest_jsonl_returns_newest_file(self):
-        d = Path(self.tmpdir.name) / "jsontest"
-        d.mkdir()
-        old = d / "001.jsonl"
-        old.write_text('{"a": 1}')
-        import time
-        time.sleep(0.05)
-        new = d / "002.jsonl"
-        new.write_text('{"b": 2}')
-
-        latest = _latest_jsonl(d)
-        self.assertEqual(latest, new)
-
-    def test_latest_jsonl_returns_none_for_empty_dir(self):
-        d = Path(self.tmpdir.name) / "empty"
-        d.mkdir()
-        self.assertIsNone(_latest_jsonl(d))
-
-    def test_latest_jsonl_ignores_non_jsonl_files(self):
-        d = Path(self.tmpdir.name) / "mixed"
-        d.mkdir()
-        (d / "notes.txt").write_text("hello")
-        (d / "data.csv").write_text("a,b")
-        self.assertIsNone(_latest_jsonl(d))
 
 
 if __name__ == "__main__":

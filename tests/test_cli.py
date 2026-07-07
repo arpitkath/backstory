@@ -170,6 +170,13 @@ class CliParserTestCase(unittest.TestCase):
         args = parser.parse_args(["hooks", "status"])
         self.assertEqual(args.hooks_command, "status")
 
+    # --- session-end parser ---
+
+    def test_session_end_parser(self):
+        parser = build_parser()
+        args = parser.parse_args(["session-end"])
+        self.assertEqual(args.command, "session-end")
+
 
 if __name__ == "__main__":
     unittest.main()

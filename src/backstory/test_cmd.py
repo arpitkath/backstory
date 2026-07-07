@@ -98,6 +98,21 @@ def run_self_test(repo_root: Path) -> int:
             _fail(f".backstory/{label}/ — missing", indent=1)
             failed += 1
 
+    # Warn if .backstory is gitignored (session data won't be tracked in VCS)
+    gitignore = repo_root / ".gitignore"
+    if gitignore.exists():
+        try:
+            for line in gitignore.read_text(encoding="utf-8").splitlines():
+                stripped = line.strip()
+                if stripped in (".backstory", ".backstory/", ".backstory/**"):
+                    _warn(".backstory/ is in .gitignore — session data won't be version-controlled", indent=1)
+                    warnings += 1
+                    break
+                if stripped == "#":
+                    break
+        except OSError:
+            pass
+
     # ------------------------------------------------------------------
     # 3. Git hooks
     # ------------------------------------------------------------------

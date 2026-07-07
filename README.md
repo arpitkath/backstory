@@ -78,7 +78,7 @@ Git stays the linkage layer. Backstory stores the reasoning.
 | `backstory dump` | ✅ Stable | Ingest an AI session into OKF markdown |
 | `backstory attach HEAD` | ✅ Stable | Link a session to a commit |
 | `backstory why HEAD` | ✅ Stable | Explain why a commit happened |
-| `backstory status` | ✅ Stable | Show Backstory state in this repo |
+| `backstory test` | ✅ Stable | Run self-test to verify installation and setup |
 | `backstory search <query>` | ✅ Stable | Search past sessions and decisions |
 | `backstory show <session>` | 🧪 Experimental | View a stored session |
 | `backstory file <path>` | 🧪 Experimental | Show AI context relevant to a file |
@@ -88,7 +88,6 @@ Git stays the linkage layer. Backstory stores the reasoning.
 | `backstory diff` | 🧪 Experimental | Explain the reasoning behind the current diff |
 | `backstory redact` | ✅ Stable | Re-scan and redact sensitive data |
 | `backstory hooks` | ✅ Stable | Manage Git hook installation |
-| `backstory test` | ✅ Stable | Run self-test to verify installation and setup |
 
 ## Integration
 

@@ -112,12 +112,12 @@ class CliParserTestCase(unittest.TestCase):
         args = parser.parse_args(["why", "HEAD", "--json"])
         self.assertTrue(args.json)
 
-    # --- status parser ---
+    # --- test parser ---
 
-    def test_status_parser(self):
+    def test_test_parser(self):
         parser = build_parser()
-        args = parser.parse_args(["status"])
-        self.assertEqual(args.command, "status")
+        args = parser.parse_args(["test"])
+        self.assertEqual(args.command, "test")
 
     # --- search parser ---
 

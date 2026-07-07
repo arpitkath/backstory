@@ -12,7 +12,7 @@ from backstory.contradiction import detect_potential_contradictions
 from backstory.dump import capture_session, load_pending_session, save_pending_session
 from backstory.dump import discover_transcript_path
 from backstory.hooks import hooks_installed, install_hooks, uninstall_hooks
-from backstory.init import check_ai_settings, initialize_repo, print_init_summary
+from backstory.init import initialize_repo, print_init_summary
 from backstory.okf import parse_session_markdown, render_session_markdown, session_id_to_filename
 from backstory.retrieval import (
     commit_for_line,
@@ -42,7 +42,6 @@ COMMANDS = [
     "show",
     "search",
     "context",
-    "status",
     "test",
     "redact",
     "repair",
@@ -99,9 +98,6 @@ def build_parser() -> argparse.ArgumentParser:
     # --- context ---
     subparsers.add_parser("context", help="Show prior AI context for a file")
 
-    # --- status ---
-    subparsers.add_parser("status", help="Show AI memory status")
-
     # --- redact ---
     redact_p = subparsers.add_parser("redact", help="Redact secrets from sessions")
     redact_p.add_argument("session_id", nargs="?", default=None, help="Session ID to redact (default: pending)")
@@ -157,7 +153,6 @@ def _get_handler(command: str):
         "attach": _handle_attach,
         "why": _handle_why,
         "test": _handle_test,
-        "status": _handle_status,
         "search": _handle_search,
         "redact": _handle_redact,
         "hooks": _handle_hooks,
@@ -204,88 +199,6 @@ def _handle_why(args: argparse.Namespace) -> int:
 
 
 # ---------------------------------------------------------------------------
-# helpers
-# ---------------------------------------------------------------------------
-
-
-def _is_backstory_gitignored(repo_root: Path) -> bool:
-    """Check if .backstory/ is listed in the repo's .gitignore."""
-    gitignore = repo_root / ".gitignore"
-    if not gitignore.exists():
-        return False
-    try:
-        for line in gitignore.read_text(encoding="utf-8").splitlines():
-            stripped = line.strip()
-            if stripped in (".backstory", ".backstory/", ".backstory/**"):
-                return True
-            if stripped == "#":
-                break  # section break — stop scanning
-        return False
-    except OSError:
-        return False
-
-
-# ---------------------------------------------------------------------------
-# status handler
-# ---------------------------------------------------------------------------
-
-
-def _handle_status(args: argparse.Namespace) -> int:
-    repo = _resolve_repo()
-    if repo is None:
-        print("Not in a Git repository.", file=sys.stderr)
-        return 1
-
-    paths = build_storage_paths(repo)
-    storage_ok = paths.root.exists()
-
-    hook_status = hooks_installed(repo)
-    pre_commit = hook_status.get("pre-commit", False)
-    post_commit = hook_status.get("post-commit", False)
-
-    pending = load_pending_session(repo)
-
-    session_count = 0
-    if paths.sessions.exists():
-        session_count = len(list(paths.sessions.glob("sha256-*.md")))
-
-    # Get current branch
-    import subprocess
-    try:
-        result = subprocess.run(
-            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-            cwd=repo, capture_output=True, text=True, check=False,
-        )
-        branch = result.stdout.strip() if result.returncode == 0 else "unknown"
-    except OSError:
-        branch = "unknown"
-
-    print(f"AI Memory:     {'enabled' if storage_ok else 'not initialized'}")
-    pre_icon = "✓" if pre_commit else "✗"
-    post_icon = "✓" if post_commit else "✗"
-    print(f"Git hooks:     pre-commit={pre_icon}  post-commit={post_icon}")
-
-    # Warn if .backstory is gitignored
-    if _is_backstory_gitignored(repo):
-        print("  ⚠  .backstory/ is in .gitignore — session data won't be tracked in version control")
-
-    ai_settings = check_ai_settings(repo)
-    for tool in sorted(ai_settings):
-        status = ai_settings[tool]
-        if status is True:
-            print(f"  {tool.capitalize():10s} settings ✓")
-        elif status == "missing":
-            hint = " (run 'backstory init')" if tool == "claude" else ""
-            print(f"  {tool.capitalize():10s} settings ✗{hint}")
-        elif status == "misconfigured":
-            print(f"  {tool.capitalize():10s} settings ⚠ (missing transcript path)")
-
-    print(f"Current branch: {branch}")
-    print(f"Pending session: {'yes' if pending else 'no'}")
-    print(f"Stored sessions: {session_count}")
-    if pending:
-        print(f"Session ID:    {pending.get('session_id', 'unknown')}")
-    return 0
 
 
 # ---------------------------------------------------------------------------

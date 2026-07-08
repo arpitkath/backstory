@@ -4,8 +4,6 @@
 
 *The reasoning layer your git history is missing.*
 
----
-
 You're reading a commit the AI wrote three weeks ago. Something is broken.
 
 - Why did it reject the simpler approach?
@@ -17,8 +15,6 @@ There's no author to ask. The chat is gone. The commit message says *what* chang
 ![Backstory terminal walkthrough](docs/assets/how-it-works-terminal.gif)
 
 ## How It Works
-
-![Backstory flow diagram](docs/assets/how-it-works-flow.gif)
 
 1. **Capture** — Claude Code's `SessionEnd` hook (set up by `backstory init`) copies the transcript to `.backstory/transcripts/latest.jsonl`.
 2. **Ingest** — Backstory extracts the durable decisions, risks, and changed files. The raw conversation is discarded.
@@ -38,7 +34,7 @@ Backstory watches for new changes that reverse earlier recorded decisions — an
   "payment.failed should mark subscription as pending, not cancelled"
 ```
 
-## What You Get
+## What It Does
 
 **Understand any commit.** `backstory why HEAD` tells you why a commit happened — rejected alternatives, accepted risks, the full chain of reasoning.
 

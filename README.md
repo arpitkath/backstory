@@ -1,6 +1,7 @@
 # Backstory
 
 **Git shows what changed. Backstory shows why.**
+
 *The reasoning layer your git history is missing.*
 
 ---
